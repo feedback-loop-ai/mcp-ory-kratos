@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.bun/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+
+# Logs
+*.log
+
+# Temporary
+*.tmp
+*.temp
+
+# Local MCP config (contains environment-specific URLs)
+.mcp.json
+
+# Claude Code
+.claude/
