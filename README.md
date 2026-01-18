@@ -27,6 +27,7 @@ MCP server enabling AI assistants to manage Ory Kratos identities, sessions, and
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Contributing](#contributing)
+- [Support](#support)
 - [License](#license)
 
 ## Prerequisites
@@ -385,6 +386,14 @@ Contributions are welcome! Please follow these steps:
 5. Commit your changes (`git commit -m 'Add my feature'`)
 6. Push to your branch (`git push origin feature/my-feature`)
 7. Open a Pull Request
+
+## Support
+
+If you find this project useful, consider sponsoring its development:
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github-sponsors)](https://github.com/sponsors/valentinyanakiev)
+
+Your support helps maintain and improve the MCP Ory Kratos server.
 
 ## License
 
