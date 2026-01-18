@@ -118,6 +118,20 @@ bun run lint
 # Type check
 bun x tsc --noEmit
 
-# Test with coverage
+# Test with coverage (unit tests only - place in tests/unit/)
+bun x vitest run --config tests/vitest.config.ts --dir tests/unit --coverage.enabled
+
+# Integration tests (requires Kratos - not run in CI)
 bun run test -- --coverage.enabled
 ```
+
+## Test Organization
+
+CI only runs **unit tests** to avoid external service dependencies (per FR-002):
+
+- `tests/unit/` - Unit tests (run in CI) - test pure functions, utilities, schemas
+- `tests/api/` - Integration tests (run locally only) - require running Kratos instance
+
+When adding new tests:
+1. Unit tests: Place in `tests/unit/*.test.ts`
+2. Integration tests: Place in `tests/api/*.test.ts`

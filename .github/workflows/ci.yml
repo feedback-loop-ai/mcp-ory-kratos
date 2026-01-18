@@ -92,12 +92,26 @@ jobs:
       - name: Install dependencies
         run: bun ci
 
+      # FR-002: Unit tests only (no integration tests requiring Kratos)
+      # Integration tests are in tests/api/ and require KRATOS_ADMIN_URL
+      # Unit tests should be placed in tests/unit/ when created
+      - name: Check for unit tests
+        id: check-tests
+        run: |
+          if [ -d "tests/unit" ] && [ -n "$(find tests/unit -name '*.test.ts' 2>/dev/null)" ]; then
+            echo "has_unit_tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_unit_tests=false" >> $GITHUB_OUTPUT
+            echo "## Unit Tests" >> $GITHUB_STEP_SUMMARY
+            echo "No unit tests found in tests/unit/. Integration tests (tests/api/) are excluded from CI per FR-002." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Run unit tests with coverage
-        run: bun run test -- --coverage.enabled
-        continue-on-error: false
+        if: steps.check-tests.outputs.has_unit_tests == 'true'
+        run: bun x vitest run --config tests/vitest.config.ts --dir tests/unit --coverage.enabled
 
       - name: Coverage Summary
-        if: always()
+        if: always() && steps.check-tests.outputs.has_unit_tests == 'true'
         run: |
           echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -116,7 +130,7 @@ jobs:
           fi
 
       - name: Upload coverage artifact
-        if: always()
+        if: always() && steps.check-tests.outputs.has_unit_tests == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
