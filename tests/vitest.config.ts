@@ -19,5 +19,14 @@ export default defineConfig({
     outputFile: {
       json: "./test-results.json",
     },
+    coverage: {
+      provider: "v8",
+      enabled: false,
+      reporter: ["text", "json-summary"],
+      reportsDirectory: "./coverage",
+      include: ["src/**/*.ts"],
+      exclude: ["**/*.d.ts", "**/index.ts", "**/__mocks__/**", "**/tests/**", "**/test/**"],
+      reportOnFailure: true,
+    },
   },
 });
