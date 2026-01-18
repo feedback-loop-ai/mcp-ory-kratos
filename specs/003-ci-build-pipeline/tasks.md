@@ -48,7 +48,7 @@
 - [X] T005 [US1] Add lint job to `.github/workflows/ci.yml` with Bun setup, caching, and Biome lint step
 - [X] T006 [US1] Add typecheck job to `.github/workflows/ci.yml` with Bun setup, caching, and TypeScript check step
 - [X] T007 [US1] Add test job to `.github/workflows/ci.yml` with Bun setup, caching, unit tests, and coverage reporting steps
-- [ ] T008 [US1] Push workflow to branch and verify all three jobs (lint, typecheck, test) run in parallel on GitHub Actions
+- [X] T008 [US1] Push workflow to branch and verify all three jobs (lint, typecheck, test) run in parallel on GitHub Actions
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - any push triggers validation with pass/fail feedback
 
@@ -62,8 +62,8 @@
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Verify CI workflow reports commit status checks for all jobs (lint, typecheck, test) by creating a test PR
-- [ ] T010 [US2] Document branch protection configuration steps in `specs/003-ci-build-pipeline/quickstart.md` (already exists - verify accuracy)
+- [X] T009 [US2] Verify CI workflow reports commit status checks for all jobs (lint, typecheck, test) by creating a test PR
+- [X] T010 [US2] Document branch protection configuration steps in `specs/003-ci-build-pipeline/quickstart.md` (already exists - verify accuracy)
 - [ ] T011 [US2] Configure branch protection rules on `001-kratos-mcp-server` branch via GitHub Settings (manual step):
   - Enable "Require status checks to pass before merging"
   - Select required checks: `Lint`, `Type Check`, `Test`
@@ -81,9 +81,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T012 [US3] Verify coverage summary appears in GitHub Job Summary after test job completion
-- [ ] T013 [US3] Verify coverage artifacts are uploaded and downloadable from GitHub Actions UI
-- [ ] T014 [US3] Add build status badge to `README.md`: `![CI](https://github.com/feedback-loop-ai/mcp-ory-kratos/actions/workflows/ci.yml/badge.svg?branch=001-kratos-mcp-server)`
+- [X] T012 [US3] Verify coverage summary appears in GitHub Job Summary after test job completion
+- [X] T013 [US3] Verify coverage artifacts are uploaded and downloadable from GitHub Actions UI
+- [X] T014 [US3] Add build status badge to `README.md`: `![CI](https://github.com/feedback-loop-ai/mcp-ory-kratos/actions/workflows/ci.yml/badge.svg?branch=001-kratos-mcp-server)`
 - [ ] T015 [US3] Verify badge displays current workflow status on README
 
 **Checkpoint**: All user stories should now be independently functional - validation runs, merge gates work, results are visible
@@ -97,10 +97,10 @@
 - [ ] T016 Run full validation checklist from `specs/003-ci-build-pipeline/quickstart.md`
 - [ ] T017 [P] Verify edge case: force-push cancels in-progress runs (push rapidly twice, verify first run cancelled)
 - [ ] T018 [P] Verify edge case: simultaneous branch pushes run independently
-- [ ] T019 [P] Verify pipeline completes within 10-minute target (FR-006)
+- [X] T019 [P] Verify pipeline completes within 10-minute target (FR-006) - Test job: 11s, Lint: 7-9s, Type Check: 15s
 - [ ] T021 [P] Verify edge case: GitHub Actions outage behavior - document expected developer workflow when CI is unavailable (check https://www.githubstatus.com, manual local validation steps)
 - [ ] T022 [P] Verify edge case: job timeout behavior - confirm workflow shows clear timeout message when job exceeds `timeout-minutes` setting
-- [ ] T020 Update `CLAUDE.md` with CI-related commands and practices
+- [X] T020 Update `CLAUDE.md` with CI-related commands and practices
 
 ---
 

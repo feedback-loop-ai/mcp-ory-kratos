@@ -8,7 +8,38 @@ MCP (Model Context Protocol) server for Ory Kratos - an open-source identity and
 
 ## Build & Development Commands
 
-*To be updated once the project structure is established.*
+```bash
+# Start MCP server
+bun run start
+
+# Lint (Biome)
+bun run lint
+bun run lint:fix  # Auto-fix issues
+
+# Type check
+bun x tsc --noEmit
+
+# Run integration tests (requires Kratos - see .env.test.local.example)
+bun run test
+bun run test:watch
+
+# Run unit tests only (CI-safe, no external dependencies)
+bun x vitest run --config tests/vitest.config.ts --dir tests/unit
+
+# Run tests with coverage
+bun run test -- --coverage.enabled
+```
+
+## CI/CD
+
+GitHub Actions CI runs on every push and PR:
+- **Lint**: `bun run lint` (Biome)
+- **Type Check**: `bun x tsc --noEmit`
+- **Test**: Unit tests only (tests/unit/) - integration tests excluded
+
+Test organization:
+- `tests/unit/` - Unit tests (run in CI)
+- `tests/api/` - Integration tests (require Kratos, run locally only)
 
 ## Architecture
 
@@ -21,6 +52,9 @@ MCP (Model Context Protocol) server for Ory Kratos - an open-source identity and
 - TypeScript 5.x (strict mode) + @modelcontextprotocol/sdk ^1.25.x, @ory/kratos-client, zod ^3.25.x (001-kratos-mcp-server)
 - TypeScript 5.x (strict mode) + Vitest ^4.0.x, @ory/kratos-client ^25.4.x, Zod ^3.25.x (002-kratos-api-tests)
 - N/A (test suite only, no persistent storage) (002-kratos-api-tests)
+- TypeScript 5.x (strict mode), Bun 1.x runtime + GitHub Actions, Biome ^2.3.x, Vitest ^4.0.x, TypeScript ^5.9.x (003-ci-build-pipeline)
+- N/A (CI configuration files only) (003-ci-build-pipeline)
 
 ## Recent Changes
+- 003-ci-build-pipeline: Added GitHub Actions CI pipeline for lint, typecheck, and unit tests
 - 001-kratos-mcp-server: Updated stack to Bun 1.x + Biome (fast feedback loops per Constitution v1.1.0)
