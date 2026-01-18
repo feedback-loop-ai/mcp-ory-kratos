@@ -56,6 +56,7 @@ Test organization:
 - N/A (CI configuration files only) (003-ci-build-pipeline)
 - TypeScript 5.x with Bun 1.x runtime + @modelcontextprotocol/sdk ^1.25.x, @ory/kratos-client ^25.4.x, zod ^3.25.x (004-readme-mcp-integration)
 - N/A (documentation only) (004-readme-mcp-integration)
+- N/A (configuration files only - YAML and Markdown) + None (GitHub-native FUNDING.yml feature) (005-github-donate-option)
 
 ## Recent Changes
 - 003-ci-build-pipeline: Added GitHub Actions CI pipeline for lint, typecheck, and unit tests
