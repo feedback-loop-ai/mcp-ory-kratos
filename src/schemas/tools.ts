@@ -104,13 +104,24 @@ export const DeleteIdentityCredentialInputSchema = z.object({
 /** Server-side filters applied before returning results (reduces token usage) */
 export const SessionFilterSchema = z.object({
   authMethod: z
-    .enum(["password", "oidc", "totp", "webauthn", "passkey", "lookup_secret", "link_recovery", "code_recovery"])
+    .enum([
+      "password",
+      "oidc",
+      "totp",
+      "webauthn",
+      "passkey",
+      "lookup_secret",
+      "link_recovery",
+      "code_recovery",
+    ])
     .optional()
     .describe("Filter by authentication method (e.g., 'oidc' for Microsoft/Google login)"),
   provider: z
     .string()
     .optional()
-    .describe("Filter by OIDC provider (e.g., 'microsoft', 'google'). Only applies when authMethod is 'oidc'"),
+    .describe(
+      "Filter by OIDC provider (e.g., 'microsoft', 'google'). Only applies when authMethod is 'oidc'",
+    ),
   authenticatedAfter: z
     .string()
     .datetime()
