@@ -54,6 +54,8 @@ Test organization:
 - N/A (test suite only, no persistent storage) (002-kratos-api-tests)
 - TypeScript 5.x (strict mode), Bun 1.x runtime + GitHub Actions, Biome ^2.3.x, Vitest ^4.0.x, TypeScript ^5.9.x (003-ci-build-pipeline)
 - N/A (CI configuration files only) (003-ci-build-pipeline)
+- TypeScript 5.x with Bun 1.x runtime + @modelcontextprotocol/sdk ^1.25.x, @ory/kratos-client ^25.4.x, zod ^3.25.x (004-readme-mcp-integration)
+- N/A (documentation only) (004-readme-mcp-integration)
 
 ## Recent Changes
 - 003-ci-build-pipeline: Added GitHub Actions CI pipeline for lint, typecheck, and unit tests
