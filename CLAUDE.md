@@ -19,6 +19,8 @@ MCP (Model Context Protocol) server for Ory Kratos - an open-source identity and
 - Vitest for testing, Biome for linting/formatting (001-kratos-mcp-server)
 - N/A (stateless proxy to Kratos Admin API) (001-kratos-mcp-server)
 - TypeScript 5.x (strict mode) + @modelcontextprotocol/sdk ^1.25.x, @ory/kratos-client, zod ^3.25.x (001-kratos-mcp-server)
+- TypeScript 5.x (strict mode) + Vitest ^4.0.x, @ory/kratos-client ^25.4.x, Zod ^3.25.x (002-kratos-api-tests)
+- N/A (test suite only, no persistent storage) (002-kratos-api-tests)
 
 ## Recent Changes
 - 001-kratos-mcp-server: Updated stack to Bun 1.x + Biome (fast feedback loops per Constitution v1.1.0)

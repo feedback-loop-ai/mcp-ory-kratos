@@ -12,7 +12,9 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "test": "vitest"
+    "test": "vitest run --config tests/vitest.config.ts",
+    "test:watch": "vitest --config tests/vitest.config.ts",
+    "test:verbose": "vitest run --config tests/vitest.config.ts --reporter=verbose"
   },
   "keywords": [
     "mcp",
