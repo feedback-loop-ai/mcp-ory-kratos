@@ -23,6 +23,7 @@ Thumbs.db
 
 # Testing
 coverage/
+.env.test.local
 
 # Logs
 *.log
