@@ -33,6 +33,35 @@ function formatExpandForGet(expand?: string[]): Array<"identity" | "devices"> | 
   return expand.filter((e): e is SessionExpandOption => e === "identity" || e === "devices");
 }
 
+/** Check if authentication method matches filter */
+function authMethodMatchesFilter(
+  authMethods: Array<{ method?: string }> | undefined,
+  authMethod: string,
+  provider?: string,
+): boolean {
+  if (!authMethods) return false;
+  return authMethods.some((am) => {
+    if (am.method !== authMethod) return false;
+    if (provider && authMethod === "oidc") {
+      return (am as { provider?: string }).provider === provider;
+    }
+    return true;
+  });
+}
+
+/** Check time range filter */
+function timeRangeMatches(
+  authenticatedAt: string | undefined,
+  after?: string,
+  before?: string,
+): boolean {
+  if (!authenticatedAt) return true;
+  const authDate = new Date(authenticatedAt);
+  if (after && authDate < new Date(after)) return false;
+  if (before && authDate > new Date(before)) return false;
+  return true;
+}
+
 /** Helper to check if a session matches the filter criteria */
 function sessionMatchesFilter(
   session: { authenticated_at?: string; authentication_methods?: Array<{ method?: string }> },
@@ -40,28 +69,103 @@ function sessionMatchesFilter(
 ): boolean {
   if (!filter) return true;
 
-  // Check auth method filter
-  if (filter.authMethod) {
-    const hasMethod = session.authentication_methods?.some((am) => {
-      if (am.method !== filter.authMethod) return false;
-      // If provider specified, also check provider (for OIDC)
-      if (filter.provider && filter.authMethod === "oidc") {
-        return (am as { provider?: string }).provider === filter.provider;
-      }
-      return true;
+  if (
+    filter.authMethod &&
+    !authMethodMatchesFilter(session.authentication_methods, filter.authMethod, filter.provider)
+  ) {
+    return false;
+  }
+
+  return timeRangeMatches(
+    session.authenticated_at,
+    filter.authenticatedAfter,
+    filter.authenticatedBefore,
+  );
+}
+
+/** Formatted session for filtered response */
+interface FormattedSession {
+  session_id: string;
+  authenticated_at: string;
+  expires_at: string;
+  active: boolean;
+  auth_methods: Array<{ method: string; provider?: string }>;
+  identity_id: string;
+  email?: string;
+  name?: string;
+}
+
+/** Extract formatted session from API response */
+function formatSession(session: {
+  id: string;
+  authenticated_at?: string;
+  expires_at?: string;
+  active?: boolean;
+  authentication_methods?: Array<{ method?: string }>;
+  identity?: { id?: string; traits?: unknown };
+}): FormattedSession {
+  const identity = session.identity;
+  const traits = identity?.traits as
+    | { email?: string; name?: { first?: string; last?: string } }
+    | undefined;
+  const name = traits?.name
+    ? `${traits.name.first ?? ""} ${traits.name.last ?? ""}`.trim()
+    : undefined;
+
+  return {
+    session_id: session.id,
+    authenticated_at: session.authenticated_at ?? "",
+    expires_at: session.expires_at ?? "",
+    active: session.active ?? false,
+    auth_methods: (session.authentication_methods ?? []).map((am) => ({
+      method: am.method ?? "",
+      provider: (am as { provider?: string }).provider,
+    })),
+    identity_id: identity?.id ?? "",
+    email: traits?.email,
+    name: name || undefined,
+  };
+}
+
+/** Fetch filtered sessions from API */
+async function fetchFilteredSessions(
+  kratosClients: KratosClients,
+  filter: SessionFilter | undefined,
+  limit: number,
+  active: boolean | undefined,
+  expand: string[] | undefined,
+): Promise<FormattedSession[]> {
+  const matchingSessions: FormattedSession[] = [];
+  const maxPagesToFetch = 10;
+  let pagesFetched = 0;
+
+  const expandWithIdentity = expand?.includes("identity")
+    ? formatExpandForList(expand)
+    : ["identity" as const, ...(formatExpandForList(expand) ?? [])];
+
+  while (matchingSessions.length < limit && pagesFetched < maxPagesToFetch) {
+    const response = await kratosClients.identity.listSessions({
+      pageSize: 100,
+      active,
+      expand: expandWithIdentity,
     });
-    if (!hasMethod) return false;
+
+    pagesFetched++;
+
+    for (const session of response.data) {
+      if (!sessionMatchesFilter(session, filter)) continue;
+      matchingSessions.push(formatSession(session));
+      if (matchingSessions.length >= limit) break;
+    }
+
+    if (response.data.length < 100) break;
+    break;
   }
 
-  // Check time range filters
-  if (filter.authenticatedAfter && session.authenticated_at) {
-    if (new Date(session.authenticated_at) < new Date(filter.authenticatedAfter)) return false;
-  }
-  if (filter.authenticatedBefore && session.authenticated_at) {
-    if (new Date(session.authenticated_at) > new Date(filter.authenticatedBefore)) return false;
-  }
-
-  return true;
+  matchingSessions.sort(
+    (a, b) => new Date(b.authenticated_at).getTime() - new Date(a.authenticated_at).getTime(),
+  );
+  return matchingSessions.slice(0, limit);
 }
 
 /**
@@ -81,15 +185,10 @@ export function registerSessionQueryTools(
     async (args) => {
       const log = getLogger();
       const hasFilter = args.filter && Object.keys(args.filter).length > 0;
-
-      log.info("Listing sessions", {
-        tool: "kratos_list_sessions",
-      });
-
+      log.info("Listing sessions", { tool: "kratos_list_sessions" });
       const startTime = Date.now();
 
       try {
-        // If no filter, just return raw API results
         if (!hasFilter) {
           const response = await kratosClients.identity.listSessions({
             pageSize: args.limit ?? 20,
@@ -107,10 +206,7 @@ export function registerSessionQueryTools(
               {
                 type: "text" as const,
                 text: JSON.stringify(
-                  {
-                    sessions: response.data,
-                    count: response.data.length,
-                  },
+                  { sessions: response.data, count: response.data.length },
                   null,
                   2,
                 ),
@@ -119,69 +215,12 @@ export function registerSessionQueryTools(
           };
         }
 
-        // With filter: fetch, filter server-side, return compact results
-        const limit = args.limit ?? 20;
-        const matchingSessions: Array<{
-          session_id: string;
-          authenticated_at: string;
-          expires_at: string;
-          active: boolean;
-          auth_methods: Array<{ method: string; provider?: string }>;
-          identity_id: string;
-          email?: string;
-          name?: string;
-        }> = [];
-
-        const maxPagesToFetch = 10;
-        let pagesFetched = 0;
-        let pageToken: string | undefined;
-
-        // Always expand identity when filtering to get user info
-        const expandWithIdentity = args.expand?.includes("identity")
-          ? formatExpandForList(args.expand)
-          : ["identity" as const, ...(formatExpandForList(args.expand) ?? [])];
-
-        while (matchingSessions.length < limit && pagesFetched < maxPagesToFetch) {
-          const response = await kratosClients.identity.listSessions({
-            pageSize: 100,
-            pageToken,
-            active: args.active,
-            expand: expandWithIdentity,
-          });
-
-          pagesFetched++;
-
-          for (const session of response.data) {
-            if (!sessionMatchesFilter(session, args.filter)) continue;
-
-            const identity = session.identity;
-            const traits = identity?.traits as { email?: string; name?: { first?: string; last?: string } } | undefined;
-
-            matchingSessions.push({
-              session_id: session.id,
-              authenticated_at: session.authenticated_at ?? "",
-              expires_at: session.expires_at ?? "",
-              active: session.active ?? false,
-              auth_methods: (session.authentication_methods ?? []).map((am) => ({
-                method: am.method ?? "",
-                provider: (am as { provider?: string }).provider,
-              })),
-              identity_id: identity?.id ?? "",
-              email: traits?.email,
-              name: traits?.name ? `${traits.name.first ?? ""} ${traits.name.last ?? ""}`.trim() : undefined,
-            });
-
-            if (matchingSessions.length >= limit) break;
-          }
-
-          if (response.data.length < 100) break;
-          // Note: For full pagination support, would need to extract page token from response headers
-          break;
-        }
-
-        // Sort by authenticated_at descending (most recent first)
-        matchingSessions.sort((a, b) =>
-          new Date(b.authenticated_at).getTime() - new Date(a.authenticated_at).getTime()
+        const sessions = await fetchFilteredSessions(
+          kratosClients,
+          args.filter,
+          args.limit ?? 20,
+          args.active,
+          args.expand,
         );
 
         log.info("Sessions listed with filter", {
@@ -194,11 +233,7 @@ export function registerSessionQueryTools(
             {
               type: "text" as const,
               text: JSON.stringify(
-                {
-                  sessions: matchingSessions.slice(0, limit),
-                  count: matchingSessions.length,
-                  filter: args.filter,
-                },
+                { sessions, count: sessions.length, filter: args.filter },
                 null,
                 2,
               ),
@@ -214,12 +249,7 @@ export function registerSessionQueryTools(
 
         const mcpError = mapError(error, "list_sessions");
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
+          content: [{ type: "text" as const, text: JSON.stringify({ error: mcpError }, null, 2) }],
           isError: true,
         };
       }
