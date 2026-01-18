@@ -10,8 +10,10 @@ import { mapError } from "../errors/mapper.js";
 import type { KratosClients } from "../kratos/client.js";
 import type { CorrelatedLogger } from "../logging/logger.js";
 import {
+  type CredentialAnalyticsInput,
   CredentialAnalyticsInputSchema,
   type CredentialAnalyticsOutput,
+  type SessionAnalyticsInput,
   SessionAnalyticsInputSchema,
   type SessionAnalyticsOutput,
 } from "../schemas/tools.js";
@@ -59,6 +61,146 @@ function incrementCount(record: Record<string, number>, key: string): void {
 }
 
 /**
+ * Extract page token from Link header
+ */
+function extractPageToken(linkHeader: unknown): string | undefined {
+  if (typeof linkHeader !== "string") return undefined;
+  const nextMatch = linkHeader.match(/<[^>]*[?&]page_token=([^&>]+)[^>]*>;\s*rel="next"/);
+  return nextMatch?.[1];
+}
+
+/**
+ * Check if session is within time range
+ */
+function isSessionInTimeRange(
+  authenticatedAt: string | undefined,
+  fromDate: string | undefined,
+  toDate: string | undefined,
+): boolean {
+  if (!authenticatedAt) return true;
+  const authDate = new Date(authenticatedAt);
+  if (fromDate && authDate < new Date(fromDate)) return false;
+  if (toDate && authDate > new Date(toDate)) return false;
+  return true;
+}
+
+/**
+ * Aggregate authentication methods from session
+ */
+function aggregateAuthMethods(
+  methods: Array<{ method?: string }> | undefined,
+  target: Record<string, number>,
+): void {
+  if (!methods) return;
+  for (const method of methods) {
+    if (method.method) {
+      incrementCount(target, method.method);
+    }
+  }
+}
+
+/**
+ * Update assurance level counts
+ */
+function updateAssuranceLevel(
+  aal: string | undefined,
+  target: { aal1: number; aal2: number },
+): void {
+  if (aal === "aal1") {
+    target.aal1++;
+  } else if (aal === "aal2" || aal === "aal3") {
+    target.aal2++;
+  }
+}
+
+/**
+ * Aggregate device information from session
+ */
+function aggregateDeviceInfo(
+  devices: Array<{ user_agent?: string }> | undefined,
+  byDeviceType: Record<string, number>,
+  byBrowser: Record<string, number>,
+): void {
+  if (!devices) return;
+  for (const device of devices) {
+    if (device.user_agent) {
+      const { deviceType, browser } = parseUserAgent(device.user_agent);
+      incrementCount(byDeviceType, deviceType);
+      incrementCount(byBrowser, browser);
+    }
+  }
+}
+
+/**
+ * Process a single session for analytics aggregation
+ */
+function processSessionForAnalytics(
+  session: {
+    active?: boolean;
+    authentication_methods?: Array<{ method?: string }>;
+    authenticator_assurance_level?: string;
+    devices?: Array<{ user_agent?: string }>;
+  },
+  analytics: SessionAnalyticsOutput,
+  includeAuthMethods: boolean,
+  includeDevices: boolean,
+): void {
+  analytics.totalSessions++;
+
+  if (session.active) {
+    analytics.activeSessions++;
+  } else {
+    analytics.inactiveSessions++;
+  }
+
+  if (includeAuthMethods) {
+    aggregateAuthMethods(session.authentication_methods, analytics.byAuthenticationMethod);
+  }
+
+  updateAssuranceLevel(session.authenticator_assurance_level, analytics.byAssuranceLevel);
+
+  if (includeDevices) {
+    aggregateDeviceInfo(session.devices, analytics.byDeviceType, analytics.byBrowser);
+  }
+}
+
+/**
+ * Process identity for credential analytics
+ */
+function processIdentityForCredentialAnalytics(
+  identity: { credentials?: Record<string, unknown> },
+  analytics: CredentialAnalyticsOutput,
+): void {
+  analytics.totalIdentities++;
+
+  const credentials = identity.credentials;
+  if (!credentials) {
+    if (analytics.mfaAdoption) {
+      analytics.mfaAdoption.disabled++;
+    }
+    return;
+  }
+
+  let hasMfa = false;
+  const credentialTypes = Object.keys(credentials);
+
+  for (const credType of credentialTypes) {
+    incrementCount(analytics.credentialDistribution, credType);
+    if (["totp", "webauthn", "lookup_secret"].includes(credType)) {
+      hasMfa = true;
+    }
+  }
+
+  if (analytics.mfaAdoption) {
+    if (hasMfa) {
+      analytics.mfaAdoption.enabled++;
+    } else {
+      analytics.mfaAdoption.disabled++;
+    }
+  }
+}
+
+/**
  * Register session analytics tool (US1)
  */
 export function registerSessionAnalyticsTools(
@@ -73,106 +215,11 @@ export function registerSessionAnalyticsTools(
     SessionAnalyticsInputSchema.shape,
     async (args) => {
       const log = getLogger();
-
-      log.info("Generating session analytics", {
-        tool: "kratos_session_analytics",
-      });
-
+      log.info("Generating session analytics", { tool: "kratos_session_analytics" });
       const startTime = Date.now();
 
       try {
-        // Aggregate sessions by fetching pages
-        const analytics: SessionAnalyticsOutput = {
-          totalSessions: 0,
-          activeSessions: 0,
-          inactiveSessions: 0,
-          byAuthenticationMethod: {},
-          byAssuranceLevel: { aal1: 0, aal2: 0 },
-          byDeviceType: {},
-          byBrowser: {},
-          timeRange: {
-            from: args.from,
-            to: args.to,
-          },
-        };
-
-        let pageToken: string | undefined;
-        let pagesProcessed = 0;
-        const maxPages = 100; // Safety limit
-
-        do {
-          const response = await kratosClients.identity.listSessions({
-            pageSize: 250, // Max page size for efficiency
-            pageToken,
-            expand: ["devices"],
-          });
-
-          const sessions = response.data;
-
-          for (const session of sessions) {
-            // Filter by time range if specified
-            const authenticatedAt = session.authenticated_at
-              ? new Date(session.authenticated_at)
-              : null;
-
-            if (args.from && authenticatedAt && authenticatedAt < new Date(args.from)) {
-              continue;
-            }
-            if (args.to && authenticatedAt && authenticatedAt > new Date(args.to)) {
-              continue;
-            }
-
-            analytics.totalSessions++;
-
-            // Count active/inactive
-            if (session.active) {
-              analytics.activeSessions++;
-            } else {
-              analytics.inactiveSessions++;
-            }
-
-            // Aggregate by authentication method
-            if (args.includeAuthMethods !== false && session.authentication_methods) {
-              for (const method of session.authentication_methods) {
-                if (method.method) {
-                  incrementCount(analytics.byAuthenticationMethod, method.method);
-                }
-              }
-            }
-
-            // Aggregate by AAL
-            const aal = session.authenticator_assurance_level;
-            if (aal === "aal1") {
-              analytics.byAssuranceLevel.aal1++;
-            } else if (aal === "aal2" || aal === "aal3") {
-              analytics.byAssuranceLevel.aal2++;
-            }
-
-            // Aggregate by device type and browser
-            if (args.includeDevices !== false && session.devices) {
-              for (const device of session.devices) {
-                if (device.user_agent) {
-                  const { deviceType, browser } = parseUserAgent(device.user_agent);
-                  incrementCount(analytics.byDeviceType, deviceType);
-                  incrementCount(analytics.byBrowser, browser);
-                }
-              }
-            }
-          }
-
-          // Get next page token from Link header
-          const linkHeader = response.headers?.link;
-          pageToken = undefined;
-
-          if (typeof linkHeader === "string") {
-            const nextMatch = linkHeader.match(/<[^>]*[?&]page_token=([^&>]+)[^>]*>;\s*rel="next"/);
-            if (nextMatch?.[1]) {
-              pageToken = nextMatch[1];
-            }
-          }
-
-          pagesProcessed++;
-        } while (pageToken && pagesProcessed < maxPages);
+        const analytics = await fetchSessionAnalytics(kratosClients, args);
 
         log.info("Session analytics generated successfully", {
           tool: "kratos_session_analytics",
@@ -180,12 +227,7 @@ export function registerSessionAnalyticsTools(
         });
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(analytics, null, 2),
-            },
-          ],
+          content: [{ type: "text" as const, text: JSON.stringify(analytics, null, 2) }],
         };
       } catch (error) {
         log.error("Failed to generate session analytics", {
@@ -196,17 +238,60 @@ export function registerSessionAnalyticsTools(
 
         const mcpError = mapError(error, "session_analytics");
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
+          content: [{ type: "text" as const, text: JSON.stringify({ error: mcpError }, null, 2) }],
           isError: true,
         };
       }
     },
   );
+}
+
+/**
+ * Fetch and aggregate session analytics
+ */
+async function fetchSessionAnalytics(
+  kratosClients: KratosClients,
+  args: SessionAnalyticsInput,
+): Promise<SessionAnalyticsOutput> {
+  const analytics: SessionAnalyticsOutput = {
+    totalSessions: 0,
+    activeSessions: 0,
+    inactiveSessions: 0,
+    byAuthenticationMethod: {},
+    byAssuranceLevel: { aal1: 0, aal2: 0 },
+    byDeviceType: {},
+    byBrowser: {},
+    timeRange: { from: args.from, to: args.to },
+  };
+
+  let pageToken: string | undefined;
+  let pagesProcessed = 0;
+  const maxPages = 100;
+
+  do {
+    const response = await kratosClients.identity.listSessions({
+      pageSize: 250,
+      pageToken,
+      expand: ["devices"],
+    });
+
+    for (const session of response.data) {
+      if (!isSessionInTimeRange(session.authenticated_at, args.from, args.to)) {
+        continue;
+      }
+      processSessionForAnalytics(
+        session,
+        analytics,
+        args.includeAuthMethods !== false,
+        args.includeDevices !== false,
+      );
+    }
+
+    pageToken = extractPageToken(response.headers?.link);
+    pagesProcessed++;
+  } while (pageToken && pagesProcessed < maxPages);
+
+  return analytics;
 }
 
 /**
@@ -224,83 +309,11 @@ export function registerCredentialAnalyticsTools(
     CredentialAnalyticsInputSchema.shape,
     async (args) => {
       const log = getLogger();
-
-      log.info("Generating credential analytics", {
-        tool: "kratos_credential_analytics",
-      });
-
+      log.info("Generating credential analytics", { tool: "kratos_credential_analytics" });
       const startTime = Date.now();
 
       try {
-        const analytics: CredentialAnalyticsOutput = {
-          totalIdentities: 0,
-          credentialDistribution: {},
-          mfaAdoption:
-            args.includeMfa !== false
-              ? {
-                  enabled: 0,
-                  disabled: 0,
-                }
-              : undefined,
-        };
-
-        let pageToken: string | undefined;
-        let pagesProcessed = 0;
-        const maxPages = 100;
-
-        do {
-          const response = await kratosClients.identity.listIdentities({
-            pageSize: 250,
-            pageToken,
-          });
-
-          const identities = response.data;
-
-          for (const identity of identities) {
-            analytics.totalIdentities++;
-
-            // Count credential types
-            const credentials = identity.credentials;
-            if (credentials) {
-              let hasMfa = false;
-              const credentialTypes = Object.keys(credentials);
-
-              for (const credType of credentialTypes) {
-                incrementCount(analytics.credentialDistribution, credType);
-
-                // Check for MFA credentials
-                if (["totp", "webauthn", "lookup_secret"].includes(credType)) {
-                  hasMfa = true;
-                }
-              }
-
-              // Track MFA adoption
-              if (analytics.mfaAdoption) {
-                if (hasMfa) {
-                  analytics.mfaAdoption.enabled++;
-                } else {
-                  analytics.mfaAdoption.disabled++;
-                }
-              }
-            } else if (analytics.mfaAdoption) {
-              // No credentials info available
-              analytics.mfaAdoption.disabled++;
-            }
-          }
-
-          // Get next page token from Link header
-          const linkHeader = response.headers?.link;
-          pageToken = undefined;
-
-          if (typeof linkHeader === "string") {
-            const nextMatch = linkHeader.match(/<[^>]*[?&]page_token=([^&>]+)[^>]*>;\s*rel="next"/);
-            if (nextMatch?.[1]) {
-              pageToken = nextMatch[1];
-            }
-          }
-
-          pagesProcessed++;
-        } while (pageToken && pagesProcessed < maxPages);
+        const analytics = await fetchCredentialAnalytics(kratosClients, args);
 
         log.info("Credential analytics generated successfully", {
           tool: "kratos_credential_analytics",
@@ -308,12 +321,7 @@ export function registerCredentialAnalyticsTools(
         });
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(analytics, null, 2),
-            },
-          ],
+          content: [{ type: "text" as const, text: JSON.stringify(analytics, null, 2) }],
         };
       } catch (error) {
         log.error("Failed to generate credential analytics", {
@@ -324,15 +332,44 @@ export function registerCredentialAnalyticsTools(
 
         const mcpError = mapError(error, "credential_analytics");
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
+          content: [{ type: "text" as const, text: JSON.stringify({ error: mcpError }, null, 2) }],
           isError: true,
         };
       }
     },
   );
+}
+
+/**
+ * Fetch and aggregate credential analytics
+ */
+async function fetchCredentialAnalytics(
+  kratosClients: KratosClients,
+  args: CredentialAnalyticsInput,
+): Promise<CredentialAnalyticsOutput> {
+  const analytics: CredentialAnalyticsOutput = {
+    totalIdentities: 0,
+    credentialDistribution: {},
+    mfaAdoption: args.includeMfa !== false ? { enabled: 0, disabled: 0 } : undefined,
+  };
+
+  let pageToken: string | undefined;
+  let pagesProcessed = 0;
+  const maxPages = 100;
+
+  do {
+    const response = await kratosClients.identity.listIdentities({
+      pageSize: 250,
+      pageToken,
+    });
+
+    for (const identity of response.data) {
+      processIdentityForCredentialAnalytics(identity, analytics);
+    }
+
+    pageToken = extractPageToken(response.headers?.link);
+    pagesProcessed++;
+  } while (pageToken && pagesProcessed < maxPages);
+
+  return analytics;
 }
