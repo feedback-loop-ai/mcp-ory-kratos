@@ -99,6 +99,32 @@ export const DeleteIdentityCredentialInputSchema = z.object({
   type: z.enum(CREDENTIAL_TYPES).describe("Credential type to delete"),
 });
 
+/** One item in a batch identity patch (mirrors the Kratos IdentityPatch shape) */
+export const BatchIdentityPatchSchema = z.object({
+  create: z
+    .object({
+      schemaId: z.string().min(1).describe("Identity schema to use"),
+      traits: z.record(z.unknown()).describe("Identity traits (must match schema)"),
+      state: z.enum(["active", "inactive"]).default("active").describe("Initial identity state"),
+      metadataPublic: z.record(z.unknown()).optional().describe("Public metadata"),
+      metadataAdmin: z.record(z.unknown()).optional().describe("Admin-only metadata"),
+    })
+    .describe("Identity to create (same fields as kratos_create_identity)"),
+  patchId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Optional correlation ID (UUID), echoed back in the matching result"),
+});
+
+export const BatchPatchIdentitiesInputSchema = z.object({
+  identities: z
+    .array(BatchIdentityPatchSchema)
+    .min(1, "At least one identity patch is required")
+    .max(100, "Batch size is limited to 100 identities per call")
+    .describe("Identity patches to apply in order (1-100 items)"),
+});
+
 // =============================================================================
 // Session Tools
 // =============================================================================
@@ -299,6 +325,8 @@ export type UpdateIdentityInput = z.infer<typeof UpdateIdentityInputSchema>;
 export type PatchIdentityInput = z.infer<typeof PatchIdentityInputSchema>;
 export type DeleteIdentityInput = z.infer<typeof DeleteIdentityInputSchema>;
 export type DeleteIdentityCredentialInput = z.infer<typeof DeleteIdentityCredentialInputSchema>;
+export type BatchIdentityPatch = z.infer<typeof BatchIdentityPatchSchema>;
+export type BatchPatchIdentitiesInput = z.infer<typeof BatchPatchIdentitiesInputSchema>;
 export type SessionFilter = z.infer<typeof SessionFilterSchema>;
 export type ListSessionsInput = z.infer<typeof ListSessionsInputSchema>;
 export type ListIdentitySessionsInput = z.infer<typeof ListIdentitySessionsInputSchema>;

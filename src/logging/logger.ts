@@ -17,6 +17,9 @@ interface LogEntry {
   resource?: string;
   kratosEndpoint?: string;
   durationMs?: number;
+  batchSize?: number;
+  succeeded?: number;
+  failed?: number;
   message: string;
   error?: {
     code?: string;

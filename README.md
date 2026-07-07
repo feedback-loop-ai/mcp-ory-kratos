@@ -217,6 +217,7 @@ The MCP server will execute `kratos_list_identities` and return the results.
 | `kratos_get_identity` | Get detailed information about a specific identity by ID |
 | `kratos_get_identity_by_external_id` | Look up identity by external identifier |
 | `kratos_create_identity` | Create a new identity with schema, traits, and optional metadata |
+| `kratos_batch_patch_identities` | Bulk-create up to 100 identities in one non-atomic request, with per-item results and a summary |
 | `kratos_update_identity` | Full update of an identity (replaces all fields) |
 | `kratos_patch_identity` | Partial update using JSON Patch operations |
 | `kratos_delete_identity` | Permanently delete an identity and all associated data |

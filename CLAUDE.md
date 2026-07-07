@@ -61,6 +61,7 @@ Test organization:
 - N/A (stateless proxy to Kratos Admin API; this change touches dependency manifests only) (007-kratos-client-26)
 - TypeScript 5.x (strict mode) on Bun 1.x + @modelcontextprotocol/sdk ^1.25.x, @ory/kratos-client ^26.2.0 (exposes `getIdentityByExternalID`), zod ^3.25.x (008-native-external-id)
 - TypeScript 5.x (strict mode) on Bun 1.x + @modelcontextprotocol/sdk ^1.25.x, @ory/kratos-client ^26.2.0, zod ^3.25.x (009-passkey-code-credentials)
+- TypeScript 5.x (strict mode) with Bun 1.x runtime + @modelcontextprotocol/sdk ^1.25.x, @ory/kratos-client ^26.2.0, zod ^3.25.x (010-batch-patch-identities)
 
 ## Recent Changes
 - 003-ci-build-pipeline: Added GitHub Actions CI pipeline for lint, typecheck, and unit tests
