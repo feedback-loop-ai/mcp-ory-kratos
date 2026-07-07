@@ -12,6 +12,7 @@ import type { KratosClients } from "../kratos/client.js";
 import { CREDENTIAL_TYPES, type CredentialType } from "../kratos/types.js";
 import type { CorrelatedLogger } from "../logging/logger.js";
 import {
+  BatchPatchIdentitiesInputSchema,
   CreateIdentityInputSchema,
   DeleteIdentityCredentialInputSchema,
   DeleteIdentityInputSchema,
@@ -261,6 +262,89 @@ export function registerIdentityManagementTools(
         });
 
         const mcpError = mapError(error, "create_identity");
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: mcpError }, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // kratos_batch_patch_identities - Bulk identity creation via PATCH /admin/identities
+  server.tool(
+    "kratos_batch_patch_identities",
+    "Create multiple identities in a single batch request (up to 100 per call). This is a bulk write operation: items succeed or fail independently (non-atomic) - the response reports a per-item result with action 'create' (with the new identity ID) or 'error' (with the Kratos error detail), plus a summary of succeeded/failed counts. Optionally supply a patchId (UUID) per item to correlate results.",
+    BatchPatchIdentitiesInputSchema.shape,
+    async (args) => {
+      const log = getLogger();
+
+      log.info("Batch patching identities", {
+        tool: "kratos_batch_patch_identities",
+        batchSize: args.identities.length,
+      });
+
+      const startTime = Date.now();
+
+      try {
+        const response = await kratosClients.identity.batchPatchIdentities({
+          patchIdentitiesBody: {
+            identities: args.identities.map((item) => ({
+              create: {
+                schema_id: item.create.schemaId,
+                traits: item.create.traits,
+                state: item.create.state,
+                metadata_public: item.create.metadataPublic,
+                metadata_admin: item.create.metadataAdmin,
+              },
+              patch_id: item.patchId,
+            })),
+          },
+        });
+
+        const items = response.data.identities ?? [];
+        const results = items.map((item, index) => ({
+          index,
+          action: item.action,
+          identityId: item.identity,
+          patchId: item.patch_id,
+          error: item.error,
+        }));
+        const summary = {
+          total: results.length,
+          succeeded: items.filter((item) => item.action === "create").length,
+          failed: items.filter((item) => item.action === "error").length,
+        };
+
+        log.info("Batch patch completed", {
+          tool: "kratos_batch_patch_identities",
+          durationMs: Date.now() - startTime,
+          batchSize: args.identities.length,
+          succeeded: summary.succeeded,
+          failed: summary.failed,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ results, summary }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        log.error("Failed to batch patch identities", {
+          tool: "kratos_batch_patch_identities",
+          durationMs: Date.now() - startTime,
+          batchSize: args.identities.length,
+          error: { message: error instanceof Error ? error.message : String(error) },
+        });
+
+        const mcpError = mapError(error, "batch_patch_identities");
         return {
           content: [
             {
