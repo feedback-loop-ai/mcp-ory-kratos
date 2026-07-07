@@ -165,39 +165,57 @@ function processSessionForAnalytics(
 }
 
 /**
- * Process identity for credential analytics
+ * Credential types counted as a second factor (MFA).
+ *
+ * Deliberately excludes `passkey` (a first-factor passwordless method, tracked
+ * separately as passwordless adoption) and `code` (may act as first or second
+ * factor; the stored credential alone cannot tell which, so it is reported only
+ * in credentialDistribution).
  */
-function processIdentityForCredentialAnalytics(
+const MFA_CREDENTIAL_TYPES: readonly string[] = ["totp", "webauthn", "lookup_secret"];
+
+/** Credential types counted as passwordless first factors */
+const PASSWORDLESS_CREDENTIAL_TYPES: readonly string[] = ["passkey"];
+
+/**
+ * Record an identity against an adoption bucket (enabled/disabled), if the
+ * bucket is present. A missing bucket means the metric is disabled by input.
+ */
+function recordAdoption(
+  bucket: { enabled: number; disabled: number } | undefined,
+  present: boolean,
+): void {
+  if (!bucket) return;
+  if (present) {
+    bucket.enabled++;
+  } else {
+    bucket.disabled++;
+  }
+}
+
+/**
+ * Process identity for credential analytics
+ *
+ * Exported for unit testing (pure aggregation logic).
+ */
+export function processIdentityForCredentialAnalytics(
   identity: { credentials?: Record<string, unknown> },
   analytics: CredentialAnalyticsOutput,
 ): void {
   analytics.totalIdentities++;
 
-  const credentials = identity.credentials;
-  if (!credentials) {
-    if (analytics.mfaAdoption) {
-      analytics.mfaAdoption.disabled++;
-    }
-    return;
-  }
-
-  let hasMfa = false;
-  const credentialTypes = Object.keys(credentials);
-
+  const credentialTypes = Object.keys(identity.credentials ?? {});
   for (const credType of credentialTypes) {
     incrementCount(analytics.credentialDistribution, credType);
-    if (["totp", "webauthn", "lookup_secret"].includes(credType)) {
-      hasMfa = true;
-    }
   }
 
-  if (analytics.mfaAdoption) {
-    if (hasMfa) {
-      analytics.mfaAdoption.enabled++;
-    } else {
-      analytics.mfaAdoption.disabled++;
-    }
-  }
+  const hasMfa = credentialTypes.some((type) => MFA_CREDENTIAL_TYPES.includes(type));
+  const hasPasswordless = credentialTypes.some((type) =>
+    PASSWORDLESS_CREDENTIAL_TYPES.includes(type),
+  );
+
+  recordAdoption(analytics.mfaAdoption, hasMfa);
+  recordAdoption(analytics.passwordlessAdoption, hasPasswordless);
 }
 
 /**
@@ -305,7 +323,7 @@ export function registerCredentialAnalyticsTools(
   // kratos_credential_analytics - Credential type distribution
   server.tool(
     "kratos_credential_analytics",
-    "Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn) are most used and MFA adoption rates.",
+    "Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn, passkey, code) are most used, plus MFA adoption (totp/webauthn/lookup_secret) and passwordless adoption (passkey) rates. Code credentials appear only in the distribution because they may be a first or second factor.",
     CredentialAnalyticsInputSchema.shape,
     async (args) => {
       const log = getLogger();
@@ -347,10 +365,12 @@ async function fetchCredentialAnalytics(
   kratosClients: KratosClients,
   args: CredentialAnalyticsInput,
 ): Promise<CredentialAnalyticsOutput> {
+  const includeAdoption = args.includeMfa !== false;
   const analytics: CredentialAnalyticsOutput = {
     totalIdentities: 0,
     credentialDistribution: {},
-    mfaAdoption: args.includeMfa !== false ? { enabled: 0, disabled: 0 } : undefined,
+    mfaAdoption: includeAdoption ? { enabled: 0, disabled: 0 } : undefined,
+    passwordlessAdoption: includeAdoption ? { enabled: 0, disabled: 0 } : undefined,
   };
 
   let pageToken: string | undefined;

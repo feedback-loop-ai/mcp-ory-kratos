@@ -6,8 +6,10 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { DeleteIdentityCredentialsTypeEnum } from "@ory/kratos-client";
 import { mapError } from "../errors/mapper.js";
 import type { KratosClients } from "../kratos/client.js";
+import { CREDENTIAL_TYPES, type CredentialType } from "../kratos/types.js";
 import type { CorrelatedLogger } from "../logging/logger.js";
 import {
   CreateIdentityInputSchema,
@@ -20,14 +22,10 @@ import {
   UpdateIdentityInputSchema,
 } from "../schemas/tools.js";
 
-// Map credential type to API parameter
-const CREDENTIAL_TYPE_MAP: Record<string, string> = {
-  password: "password",
-  oidc: "oidc",
-  totp: "totp",
-  webauthn: "webauthn",
-  lookup_secret: "lookup_secret",
-};
+// Map credential type to API parameter (derived from the shared credential type list)
+const CREDENTIAL_TYPE_MAP: Record<string, CredentialType> = Object.fromEntries(
+  CREDENTIAL_TYPES.map((type) => [type, type]),
+);
 
 /**
  * Register identity query tools (list, get, get_by_external_id)
@@ -117,9 +115,7 @@ export function registerIdentityQueryTools(
       try {
         const response = await kratosClients.identity.getIdentity({
           id: args.id,
-          includeCredential: args.includeCredentials
-            ? ["password", "oidc", "totp", "webauthn", "lookup_secret"]
-            : undefined,
+          includeCredential: args.includeCredentials ? [...CREDENTIAL_TYPES] : undefined,
         });
 
         log.info("Identity retrieved successfully", {
@@ -459,7 +455,7 @@ export function registerIdentityManagementTools(
   // kratos_delete_identity_credential - Delete a specific credential type
   server.tool(
     "kratos_delete_identity_credential",
-    "Delete a specific credential type from an identity. For example, remove TOTP or WebAuthn credentials while keeping password authentication.",
+    "Delete a specific credential type from an identity. For example, remove TOTP, WebAuthn, passkey, or one-time-code credentials while keeping password authentication.",
     DeleteIdentityCredentialInputSchema.shape,
     async (args) => {
       const log = getLogger();
@@ -482,7 +478,7 @@ export function registerIdentityManagementTools(
                     error: {
                       code: "INVALID_CREDENTIAL_TYPE",
                       message: `Invalid credential type: ${args.type}`,
-                      suggestion: "Valid types are: password, oidc, totp, webauthn, lookup_secret",
+                      suggestion: `Valid types are: ${CREDENTIAL_TYPES.join(", ")}`,
                     },
                   },
                   null,
@@ -496,7 +492,7 @@ export function registerIdentityManagementTools(
 
         await kratosClients.identity.deleteIdentityCredentials({
           id: args.id,
-          type: credType as "password" | "oidc" | "totp" | "webauthn" | "lookup_secret",
+          type: credType as DeleteIdentityCredentialsTypeEnum,
         });
 
         log.info("Identity credential deleted successfully", {

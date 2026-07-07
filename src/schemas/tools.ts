@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { CREDENTIAL_TYPES } from "../kratos/types.js";
 
 // =============================================================================
 // Common Types
@@ -95,9 +96,7 @@ export const DeleteIdentityInputSchema = z.object({
 
 export const DeleteIdentityCredentialInputSchema = z.object({
   id: z.string().uuid().describe("Identity UUID"),
-  type: z
-    .enum(["password", "oidc", "totp", "webauthn", "lookup_secret"])
-    .describe("Credential type to delete"),
+  type: z.enum(CREDENTIAL_TYPES).describe("Credential type to delete"),
 });
 
 // =============================================================================
@@ -249,7 +248,10 @@ export const SessionAnalyticsOutputSchema = z.object({
 });
 
 export const CredentialAnalyticsInputSchema = z.object({
-  includeMfa: z.boolean().default(true).describe("Include MFA adoption stats"),
+  includeMfa: z
+    .boolean()
+    .default(true)
+    .describe("Include adoption stats (MFA and passwordless/passkey)"),
 });
 
 export const CredentialAnalyticsOutputSchema = z.object({
@@ -261,6 +263,15 @@ export const CredentialAnalyticsOutputSchema = z.object({
       disabled: z.number().int().describe("Identities without MFA"),
     })
     .optional(),
+  passwordlessAdoption: z
+    .object({
+      enabled: z.number().int().describe("Identities with a passwordless first factor (passkey)"),
+      disabled: z.number().int().describe("Identities without a passwordless first factor"),
+    })
+    .optional()
+    .describe(
+      "Passwordless (passkey) adoption. Separate from mfaAdoption because passkeys are a first factor, not MFA. 'code' credentials appear only in credentialDistribution since they may act as first or second factor.",
+    ),
 });
 
 // =============================================================================

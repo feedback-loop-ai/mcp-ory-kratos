@@ -33,9 +33,26 @@ export type {
 export type IdentityState = "active" | "inactive";
 
 /**
+ * Credential types supported by this server (single source of truth).
+ *
+ * A deliberate subset of the SDK's DeleteIdentityCredentialsTypeEnum /
+ * GetIdentityIncludeCredentialEnum limited to account login credentials
+ * (excludes profile, saml, link_recovery, code_recovery).
+ */
+export const CREDENTIAL_TYPES = [
+  "password",
+  "oidc",
+  "totp",
+  "webauthn",
+  "lookup_secret",
+  "passkey",
+  "code",
+] as const;
+
+/**
  * Credential types supported by Kratos
  */
-export type CredentialType = "password" | "oidc" | "totp" | "webauthn" | "lookup_secret";
+export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 
 /**
  * Message status values

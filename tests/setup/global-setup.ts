@@ -173,9 +173,33 @@ function formatError(error: unknown): string {
 }
 
 /**
+ * Detect a unit-test-only invocation (e.g. `vitest run --dir tests/unit`).
+ *
+ * Unit tests are self-contained and must run without a live Kratos instance
+ * (CI runs them this way), so the pre-flight validation is skipped.
+ */
+function isUnitTestOnlyRun(): boolean {
+  const argv = process.argv;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--dir" && argv[i + 1]?.replace(/\\/g, "/").includes("tests/unit")) {
+      return true;
+    }
+    if (argv[i]?.startsWith("--dir=") && argv[i].replace(/\\/g, "/").includes("tests/unit")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Global setup function called by Vitest before all tests
  */
 export async function setup(): Promise<void> {
+  if (isUnitTestOnlyRun()) {
+    console.log("\n--- Unit Test Run - Skipping Kratos Pre-flight Validation ---\n");
+    return;
+  }
+
   console.log("\n--- Kratos API Test Suite Setup ---\n");
 
   try {
