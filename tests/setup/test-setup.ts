@@ -7,7 +7,7 @@
  * and handles pre-flight validation (connectivity, auth, version).
  */
 
-import { beforeAll } from "vitest";
+import { beforeAll, expect } from "vitest";
 import { loadConfig } from "./config";
 import { initializeTestContext } from "./context";
 
@@ -15,9 +15,17 @@ let initialized = false;
 
 /**
  * Initialize the test context once before any tests run
+ *
+ * Skipped for unit tests (tests/unit/), which are self-contained and must run
+ * without a live Kratos instance.
  */
 beforeAll(async () => {
   if (initialized) {
+    return;
+  }
+
+  const testPath = expect.getState().testPath?.replace(/\\/g, "/");
+  if (testPath?.includes("/tests/unit/")) {
     return;
   }
 
