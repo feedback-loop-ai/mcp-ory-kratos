@@ -53,7 +53,10 @@ export const GetIdentityInputSchema = z.object({
 });
 
 export const GetIdentityByExternalIdInputSchema = z.object({
-  externalId: z.string().min(1).describe("External identifier"),
+  externalId: z
+    .string()
+    .min(1)
+    .describe("The identity's external_id field value (exact match, Kratos 25.4.0+)"),
 });
 
 export const CreateIdentityInputSchema = z.object({

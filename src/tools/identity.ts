@@ -156,10 +156,10 @@ export function registerIdentityQueryTools(
     },
   );
 
-  // kratos_get_identity_by_external_id - Get identity by external identifier
+  // kratos_get_identity_by_external_id - Get identity by its external_id field
   server.tool(
     "kratos_get_identity_by_external_id",
-    "Look up an identity by its external identifier. Useful when integrating with external systems that use their own user IDs.",
+    "Look up an identity by its external_id field (exact match, requires Kratos 25.4.0+). The external_id links an identity to a record in an external system and is unique across all identities. Returns a structured NOT_FOUND error if no identity has the given external_id.",
     GetIdentityByExternalIdInputSchema.shape,
     async (args) => {
       const log = getLogger();
@@ -171,39 +171,9 @@ export function registerIdentityQueryTools(
       const startTime = Date.now();
 
       try {
-        // The Kratos API doesn't have a direct "get by external ID" endpoint,
-        // so we use list with credentials_identifier filter
-        const response = await kratosClients.identity.listIdentities({
-          credentialsIdentifier: args.externalId,
-          pageSize: 1,
+        const response = await kratosClients.identity.getIdentityByExternalID({
+          externalID: args.externalId,
         });
-
-        if (response.data.length === 0) {
-          log.warn("Identity not found by external ID", {
-            tool: "kratos_get_identity_by_external_id",
-            durationMs: Date.now() - startTime,
-          });
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    error: {
-                      code: "IDENTITY_NOT_FOUND",
-                      message: `No identity found with external ID: ${args.externalId}`,
-                      suggestion: "Verify the external ID is correct",
-                    },
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-            isError: true,
-          };
-        }
 
         log.info("Identity found by external ID", {
           tool: "kratos_get_identity_by_external_id",
@@ -214,7 +184,7 @@ export function registerIdentityQueryTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(response.data[0], null, 2),
+              text: JSON.stringify(response.data, null, 2),
             },
           ],
         };
