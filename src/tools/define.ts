@@ -9,7 +9,7 @@
 
 import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
-import type { z } from "zod";
+import { z } from "zod";
 import type { Config, Toolset } from "../config.js";
 import { mapError } from "../errors/mapper.js";
 import type { KratosClients } from "../kratos/client.js";
@@ -26,8 +26,6 @@ export interface ToolContext {
 /** Per-invocation context passed to `run` */
 export interface RunContext {
   log: CorrelatedLogger;
-  /** Ask the client to confirm a destructive action; resolves true when no elicitation is possible */
-  confirm: (message: string) => Promise<boolean>;
 }
 
 type AnyObjectSchema = z.ZodObject<z.ZodRawShape>;
@@ -43,6 +41,12 @@ export interface ToolDefinition<I extends AnyObjectSchema, O extends AnyObjectSc
   /** When set, the run result is also returned as `structuredContent` and validated by the SDK */
   outputSchema?: O;
   annotations: ToolAnnotations;
+  /**
+   * Builds the confirmation prompt for destructive tools. Required whenever
+   * `annotations.destructiveHint` is true; the prompt is shown via MCP
+   * elicitation before `run` and a declined answer short-circuits to CANCELLED.
+   */
+  confirmMessage?: (args: z.infer<I>) => string;
   run: (args: z.infer<I>, ctx: RunContext) => Promise<z.infer<O>>;
 }
 
@@ -56,6 +60,21 @@ export function passthrough<T>(value: T): T extends unknown[] ? Passthrough[] : 
 
 /** Result returned when the user declined a destructive action */
 export const CANCELLED = { cancelled: true as const, message: "Cancelled by user" };
+
+export const CancelledResultSchema = z.object({
+  cancelled: z.literal(true),
+  message: z.string(),
+});
+
+/**
+ * Destructive tools may return CANCELLED instead of their declared output, so
+ * the schema advertised to clients (and validated by the SDK) is the union.
+ * Implemented as a passthrough object with every declared field optional plus
+ * the cancellation fields, because tool output schemas must be objects.
+ */
+function withCancellation(schema: AnyObjectSchema): AnyObjectSchema {
+  return schema.partial().extend(CancelledResultSchema.partial().shape).passthrough();
+}
 
 function toolResult(payload: unknown, opts: { structured: boolean; isError?: boolean }) {
   return {
@@ -96,6 +115,10 @@ export function defineTool<I extends AnyObjectSchema, O extends AnyObjectSchema>
   const { server, config, getLogger } = ctx;
   const context = def.name.replace(/^kratos_/, "");
   const structured = def.outputSchema !== undefined;
+  const destructive = def.annotations.destructiveHint === true;
+  if (destructive && !def.confirmMessage) {
+    throw new Error(`Tool ${def.name} is destructive but defines no confirmMessage`);
+  }
 
   const registered = server.registerTool(
     def.name,
@@ -104,7 +127,9 @@ export function defineTool<I extends AnyObjectSchema, O extends AnyObjectSchema>
       description: def.description,
       // Pass full zod objects (not `.shape`) so `.passthrough()` survives JSON Schema conversion
       inputSchema: def.inputSchema,
-      ...(def.outputSchema ? { outputSchema: def.outputSchema } : {}),
+      ...(def.outputSchema
+        ? { outputSchema: destructive ? withCancellation(def.outputSchema) : def.outputSchema }
+        : {}),
       annotations: { openWorldHint: false, ...def.annotations },
     },
     // biome-ignore lint/suspicious/noExplicitAny: SDK callback generics resolve args from the raw shape
@@ -113,13 +138,15 @@ export function defineTool<I extends AnyObjectSchema, O extends AnyObjectSchema>
       const startTime = Date.now();
       log.info("Tool invoked", { tool: def.name });
 
-      const confirm = async (message: string): Promise<boolean> => {
-        if (!config.confirmDestructive || def.annotations.destructiveHint !== true) return true;
-        return confirmViaElicitation(server, message);
-      };
-
       try {
-        const out = await def.run(args as z.infer<I>, { log, confirm });
+        if (destructive && config.confirmDestructive && def.confirmMessage) {
+          const ok = await confirmViaElicitation(server, def.confirmMessage(args as z.infer<I>));
+          if (!ok) {
+            log.info("Tool cancelled by user", { tool: def.name });
+            return toolResult(CANCELLED, { structured });
+          }
+        }
+        const out = await def.run(args as z.infer<I>, { log });
         log.info("Tool completed", { tool: def.name, durationMs: Date.now() - startTime });
         return toolResult(out, { structured });
       } catch (error) {

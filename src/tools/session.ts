@@ -20,14 +20,7 @@ import {
   PassthroughObjectSchema,
   type SessionFilter,
 } from "../schemas/tools.js";
-import {
-  CANCELLED,
-  DESTRUCTIVE,
-  defineTool,
-  READ_ONLY,
-  type ToolContext,
-  UPDATE,
-} from "./define.js";
+import { DESTRUCTIVE, defineTool, READ_ONLY, type ToolContext, UPDATE } from "./define.js";
 
 type Passthrough = z.infer<typeof PassthroughObjectSchema>;
 
@@ -244,10 +237,8 @@ export function registerSessionTools(ctx: ToolContext): void {
     inputSchema: DisableSessionInputSchema,
     outputSchema: PassthroughObjectSchema,
     annotations: DESTRUCTIVE,
-    run: async (args, { confirm }) => {
-      if (!(await confirm(`Disable session ${args.id}? The user will be logged out.`))) {
-        return CANCELLED;
-      }
+    confirmMessage: (args) => `Disable session ${args.id}? The user will be logged out.`,
+    run: async (args) => {
       await ctx.clients.identity.disableSession({ id: args.id });
       return { success: true, message: `Session ${args.id} has been disabled` };
     },
@@ -261,6 +252,7 @@ export function registerSessionTools(ctx: ToolContext): void {
     inputSchema: ExtendSessionInputSchema,
     outputSchema: PassthroughObjectSchema,
     annotations: UPDATE,
+    confirmMessage: (args) => `Extend session ${args.id} beyond its current expiry?`,
     run: async (args) => {
       const response = await ctx.clients.identity.extendSession({ id: args.id });
       return response.data as unknown as Passthrough;
@@ -276,14 +268,9 @@ export function registerSessionTools(ctx: ToolContext): void {
     inputSchema: DeleteIdentitySessionsInputSchema,
     outputSchema: PassthroughObjectSchema,
     annotations: DESTRUCTIVE,
-    run: async (args, { confirm }) => {
-      if (
-        !(await confirm(
-          `Delete all sessions for identity ${args.identityId}? The user will be logged out everywhere.`,
-        ))
-      ) {
-        return CANCELLED;
-      }
+    confirmMessage: (args) =>
+      `Delete all sessions for identity ${args.identityId}? The user will be logged out everywhere.`,
+    run: async (args) => {
       await ctx.clients.identity.deleteIdentitySessions({ id: args.identityId });
       return {
         success: true,

@@ -34,7 +34,6 @@ import {
   UpdateIdentityInputSchema,
 } from "../schemas/tools.js";
 import {
-  CANCELLED,
   CREATE,
   DESTRUCTIVE,
   defineTool,
@@ -92,6 +91,11 @@ function asSummary(identity: unknown): IdentitySummary {
 
 function toBatchAction(action: IdentityPatchResponseActionEnum | undefined) {
   return action === "create" || action === "error" ? action : ("unknown" as const);
+}
+
+/** Human-readable target for credential deletion prompts/messages */
+function credentialTarget(args: { type: string; identifier?: string }): string {
+  return args.identifier ? `${args.type} (${args.identifier})` : args.type;
 }
 
 /**
@@ -188,6 +192,8 @@ export function registerIdentityTools(ctx: ToolContext): void {
     inputSchema: UpdateIdentityInputSchema,
     outputSchema: IdentitySummarySchema,
     annotations: UPDATE_IDEMPOTENT,
+    confirmMessage: (args) =>
+      `Replace all traits/metadata of identity ${args.id}? Omitted metadata will be cleared.`,
     run: async (args) => {
       const response = await clients.identity.updateIdentity({
         id: args.id,
@@ -206,6 +212,8 @@ export function registerIdentityTools(ctx: ToolContext): void {
     inputSchema: PatchIdentityInputSchema,
     outputSchema: IdentitySummarySchema,
     annotations: UPDATE,
+    confirmMessage: (args) =>
+      `Apply ${args.patch.length} JSON patch operation(s) to identity ${args.id}?`,
     run: async (args) => {
       const response = await clients.identity.patchIdentity({
         id: args.id,
@@ -224,11 +232,9 @@ export function registerIdentityTools(ctx: ToolContext): void {
     inputSchema: SetIdentityStateInputSchema,
     outputSchema: PassthroughObjectSchema,
     annotations: UPDATE_IDEMPOTENT,
-    run: async (args, { confirm }) => {
-      const ok = await confirm(
-        `Set identity ${args.id} to ${args.state}${args.revokeSessions ? " and revoke all its sessions" : ""}?`,
-      );
-      if (!ok) return CANCELLED;
+    confirmMessage: (args) =>
+      `Set identity ${args.id} to ${args.state}${args.revokeSessions ? " and revoke all its sessions" : ""}?`,
+    run: async (args) => {
       const response = await clients.identity.patchIdentity({
         id: args.id,
         jsonPatch: [{ op: "replace", path: "/state", value: args.state }],
@@ -249,10 +255,8 @@ export function registerIdentityTools(ctx: ToolContext): void {
     inputSchema: DeleteIdentityInputSchema,
     outputSchema: PassthroughObjectSchema,
     annotations: DESTRUCTIVE,
-    run: async (args, { confirm }) => {
-      if (!(await confirm(`Permanently delete identity ${args.id}? This cannot be undone.`))) {
-        return CANCELLED;
-      }
+    confirmMessage: (args) => `Permanently delete identity ${args.id}? This cannot be undone.`,
+    run: async (args) => {
       await clients.identity.deleteIdentity({ id: args.id });
       return { success: true, message: `Identity ${args.id} has been permanently deleted` };
     },
@@ -267,11 +271,10 @@ export function registerIdentityTools(ctx: ToolContext): void {
     inputSchema: DeleteIdentityCredentialInputSchema,
     outputSchema: PassthroughObjectSchema,
     annotations: DESTRUCTIVE,
-    run: async (args, { confirm }) => {
-      const target = args.identifier ? `${args.type} (${args.identifier})` : args.type;
-      if (!(await confirm(`Delete ${target} credential from identity ${args.id}?`))) {
-        return CANCELLED;
-      }
+    confirmMessage: (args) =>
+      `Delete ${credentialTarget(args)} credential from identity ${args.id}?`,
+    run: async (args) => {
+      const target = credentialTarget(args);
       await clients.identity.deleteIdentityCredentials({
         id: args.id,
         type: args.type,

@@ -69,11 +69,6 @@ export const MutationResultSchema = z.object({
   message: z.string(),
 });
 
-export const CancelledResultSchema = z.object({
-  cancelled: z.literal(true),
-  message: z.string(),
-});
-
 // =============================================================================
 // Identity Tools
 // =============================================================================

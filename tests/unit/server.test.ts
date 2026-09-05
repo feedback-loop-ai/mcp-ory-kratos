@@ -143,6 +143,31 @@ describe("server", () => {
       expect(h.stubs.identity.deleteIdentity).toHaveBeenCalled();
     });
 
+    it("asks for every destructive-annotated tool, with no per-tool code", async () => {
+      h = await startHarness();
+      const { tools } = await h.client.listTools();
+      const destructive = tools.filter((t) => t.annotations?.destructiveHint === true);
+      expect(destructive.length).toBeGreaterThanOrEqual(7);
+      h.elicit.handler = () => ({ action: "decline" });
+      for (const tool of destructive) {
+        const args: Record<string, unknown> = { id: ID, identityId: ID };
+        if (tool.name === "kratos_update_identity") {
+          Object.assign(args, { schemaId: "default", traits: {}, state: "active" });
+        }
+        if (tool.name === "kratos_patch_identity") {
+          args.patch = [{ op: "replace", path: "/state", value: "active" }];
+        }
+        if (tool.name === "kratos_set_identity_state") args.state = "inactive";
+        if (tool.name === "kratos_delete_identity_credential") args.type = "totp";
+        const res = await h.callTool(tool.name, args);
+        expect(res.structuredContent?.cancelled, tool.name).toBe(true);
+      }
+      expect(h.elicit.calls).toHaveLength(destructive.length);
+      for (const api of Object.values(h.stubs.identity)) {
+        expect(api).not.toHaveBeenCalled();
+      }
+    });
+
     it("never asks for read-only tools", async () => {
       h = await startHarness();
       h.stubs.metadata.isReady.mockResolvedValue({ data: { status: "ok" } });
@@ -176,5 +201,32 @@ describe("server", () => {
     await expect(h.client.readResource({ uri: "kratos://schemas/nope" })).rejects.toThrow(
       /NOT_FOUND/,
     );
+  });
+});
+
+describe("defineTool invariants", () => {
+  it("refuses to register a destructive tool without a confirmMessage", async () => {
+    const { defineTool, DESTRUCTIVE } = await import("../../src/tools/define");
+    const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
+    const { z } = await import("zod");
+    const { BASE_CONFIG, createClientStubs } = await import("./harness");
+    const server = new McpServer({ name: "t", version: "0" });
+    const ctx = {
+      server,
+      clients: createClientStubs() as never,
+      config: BASE_CONFIG,
+      getLogger: () => ({ info() {}, error() {}, warn() {}, debug() {}, trace() {} }) as never,
+    };
+    expect(() =>
+      defineTool(ctx, {
+        name: "kratos_x",
+        title: "x",
+        description: "x",
+        toolset: "health",
+        inputSchema: z.object({}),
+        annotations: DESTRUCTIVE,
+        run: async () => ({}),
+      }),
+    ).toThrow(/confirmMessage/);
   });
 });
