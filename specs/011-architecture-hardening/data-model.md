@@ -32,7 +32,8 @@ The server is a stateless proxy; every entity below is either a configuration va
 | `inputSchema` | `ZodObject` | full object (not `.shape`) so `.passthrough()` survives JSON-Schema conversion |
 | `outputSchema` | `ZodObject` (optional) | when present the result is also emitted as `structuredContent` and validated by the SDK |
 | `annotations` | `ToolAnnotations` | one of the presets below; `openWorldHint: false` always added |
-| `run(args, { log, confirm })` | async | returns plain data; throws upstream errors |
+| `confirmMessage(args)` | `(args) => string` | REQUIRED when `destructiveHint` is true (registration throws otherwise); builds the elicitation prompt |
+| `run(args, { log })` | async | returns plain data; throws upstream errors; never sees confirmation |
 
 **Annotation presets**
 
@@ -46,7 +47,7 @@ The server is a stateless proxy; every entity below is either a configuration va
 
 **Visibility rule**: a tool is disabled (hidden from `tools/list`, rejected on call) iff `toolset ∉ config.toolsets` OR (`config.readOnly` AND `readOnlyHint !== true`).
 
-**Confirmation rule**: `confirm(message)` resolves `true` immediately unless `config.confirmDestructive` AND `annotations.destructiveHint === true` AND the client advertises `elicitation`; then it issues an elicitation with a boolean `confirm` field and resolves `true` only on `accept` with `confirm === true`.
+**Confirmation rule** (enforced in `defineTool`, not per tool): before `run`, if `annotations.destructiveHint === true` AND `config.confirmDestructive` AND the client advertises `elicitation`, the server issues an elicitation with a boolean `confirm` field built from `confirmMessage(args)`; anything other than `accept` + `confirm === true` returns the Cancelled Result and skips `run`. Destructive tools' advertised output schema is their declared schema unioned with the cancelled shape (all declared fields optional + `cancelled`/`message`, passthrough).
 
 ## Wire structures
 

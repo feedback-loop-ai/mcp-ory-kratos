@@ -123,6 +123,13 @@ defineTool(ctx, {
 });
 ```
 
+Destructive tools only add a prompt builder — confirmation itself is applied by the registration layer:
+
+```ts
+annotations: DESTRUCTIVE,
+confirmMessage: (args) => `Permanently delete identity ${args.id}? This cannot be undone.`,
+```
+
 Then a harness test:
 
 ```ts
