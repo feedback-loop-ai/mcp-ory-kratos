@@ -12,7 +12,7 @@
 These items MUST be completed before User Story 2 tasks can succeed:
 
 - [x] PRE-001 For initial v0.1.0 release ONLY: Configure NPM_TOKEN secret (Settings → Secrets → Actions)
-- [ ] PRE-002 After initial publish: Configure Trusted Publisher on npmjs.com (org: feedback-loop-ai, repo: mcp-ory-kratos, workflow: release.yml)
+- [ ] PRE-002 After initial publish: Configure Trusted Publisher on npmjs.com (org: feedback-loop-ai, repo: mcp-ory-kratos, workflow: release.yml) — workflow side done 2026-09-05 (npm ≥ 11.5.1 on the publish runner, `--provenance`); npmjs.com link pending, verified by the next release publishing via OIDC
 - [ ] PRE-003 After Trusted Publishing configured: Remove NPM_TOKEN secret from repository
 
 **Note**: Prerequisites are manual configuration steps, not code tasks. OIDC Trusted Publishing (PRE-002) is the recommended approach but requires the package to exist first. See quickstart.md for detailed instructions.
@@ -113,7 +113,7 @@ These items MUST be completed before User Story 2 tasks can succeed:
 - [x] T021 Run quickstart.md verification checklist locally (build verified, runs on Node.js 18+ and Bun 1.x)
 - [x] T022 Verify existing CI workflow (ci.yml) is preserved and unchanged (FR-010)
 - [ ] T023 Document SC-001 validation: measure fresh install time with `time npm install -g mcp-ory-kratos` (target: < 2 minutes; note: user network conditions vary, this is observational not CI-enforced) - POST-RELEASE
-- [ ] T024 Document SC-002 validation: observe workflow duration from tag push to npm availability (target: < 10 minutes; typical: 2-4 minutes; GitHub Actions default timeout applies) - POST-RELEASE
+- [x] T024 Document SC-002 validation: observe workflow duration from tag push to npm availability (target: < 10 minutes; typical: 2-4 minutes; GitHub Actions default timeout applies) - POST-RELEASE — v0.3.0 (2026-09-05): validate 10s + build ~20s + publish ~15s ≈ 1 min tag-to-npm on the successful attempt
 
 ---
 

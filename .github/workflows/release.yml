@@ -147,10 +147,16 @@ jobs:
             echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
-      # npm >= 11.5 supports Trusted Publishing (OIDC) — no NPM_TOKEN needed once the
-      # package is linked to this workflow on npmjs.com. NPM_TOKEN is only a fallback.
+      # Trusted Publishing (OIDC): npm >= 11.5.1 detects the GitHub OIDC token and
+      # authenticates without NPM_TOKEN once the package is linked to this workflow
+      # on npmjs.com (Package settings -> Trusted Publisher -> GitHub Actions:
+      # org feedback-loop-ai, repo mcp-ory-kratos, workflow release.yml).
+      # NPM_TOKEN is kept only as a fallback until OIDC is confirmed; then delete the secret.
       - name: Ensure npm supports trusted publishing
-        run: npm install -g npm@latest && npm --version
+        run: |
+          npm install -g npm@latest
+          npm --version
+          node --version
 
       - name: Publish to npm
         uses: nick-fields/retry@v3
@@ -158,8 +164,8 @@ jobs:
           max_attempts: 2
           timeout_minutes: 5
           retry_wait_seconds: 10
-          # dist/ is the CI-built artifact from the build job; skip prepublishOnly (bun run build)
-          # because this runner has Node only.
+          # dist/ is the CI-built artifact from the build job; --ignore-scripts skips
+          # prepublishOnly (bun run build) because this runner has Node only.
           command: npm publish --provenance --access public --ignore-scripts --tag ${{ steps.dist-tag.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
