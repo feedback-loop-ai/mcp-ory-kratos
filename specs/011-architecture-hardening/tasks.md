@@ -293,7 +293,7 @@ In practice the whole feature landed as one refactor commit (976cd06) because ev
 | FR-004a strictly sequential scans, no throttling | T007, T020, T021, T023, T024 |
 | FR-005 `kratos_list_sessions` `limit` → `pageSize`/`pageToken` (breaking, 0.3.0) | T020, T023, T059 |
 | FR-006 title + annotation hints on every tool | T012, T027, T028, T061 |
-| FR-006a every description ends with `Example: {...}` | T073, T016 |
+| FR-006a every description ends with `Example: {...}` | T073, T027 (Ajv assertion in `tests/unit/server.test.ts`) |
 | FR-007 toolset gating, hidden = protocol error | T006, T013, T027, T029, T031 |
 | FR-007a boolean flag spellings (`1/true/yes/on`), empty/`all` toolsets | T006, T019 |
 | FR-008 read-only mode | T006, T013, T027, T029 |
