@@ -12,7 +12,7 @@ Fix the two silent-correctness defects (list tools never return a cursor; filter
 **Language/Version**: TypeScript 5.9 (strict mode) on Bun 1.3.x (`packageManager: bun@1.3.3`); published bundle targets Node ≥ 20 (`engines.node >=20.0.0`, `#!/usr/bin/env node`)
 **Primary Dependencies**: @modelcontextprotocol/sdk ^1.30.0, @ory/kratos-client ^26.2.0, zod ^3.25.x, axios ^1.20 (override); dev: vitest ^4, @vitest/coverage-v8 ^4, @biomejs/biome ^2.5, typescript ^5.9
 **Storage**: N/A (stateless proxy to Kratos Admin API; no per-call state survives the request)
-**Testing**: Unit — Vitest via an in-memory MCP harness (`tests/unit/harness.ts`: real `createServer` + `InMemoryTransport` + Proxy-backed `vi.fn()` Kratos stubs), 15 files / 176 tests. Integration — `tests/api/` against `docker compose` Kratos v26.2.0 (`dsn: memory`), files serial, includes `mcp-e2e.test.ts` driving the server over stdio through a real `Client`
+**Testing**: Unit — Vitest via an in-memory MCP harness (`tests/unit/harness.ts`: real `createServer` + `InMemoryTransport` + Proxy-backed `vi.fn()` Kratos stubs), 15 files / 215 tests. Integration — `tests/api/` against `docker compose` Kratos v26.2.0 (`dsn: memory`), files serial, includes `mcp-e2e.test.ts` driving the server over stdio through a real `Client`
 **Target Platform**: Linux/macOS server-side; stdio MCP transport only (Claude Code, VS Code, any MCP client)
 **Project Type**: Single project (`src/`, `tests/` at repository root)
 **Performance Goals**: Unit suite < 5 s (Constitution VI; actual ≈ 0.3 s + coverage); plain list tools = exactly one upstream call; scanning tools ≤ `maxPages` upstream calls (default `KRATOS_MAX_SCAN_PAGES=20`, hard max 1000); no additional latency on the non-destructive path (confirmation only adds one client round-trip for destructive tools when elicitation is supported)
@@ -26,7 +26,7 @@ Fix the two silent-correctness defects (list tools never return a cursor; filter
 | Principle / Section | Check | Status |
 |---|---|---|
 | I. AI-Native Development | Every tool has Zod input + output schema, `structuredContent`, title, annotations, action-oriented description (destructive tools state irreversibility; scanners state the cap). Server `instructions` explain IDs, cursors, redaction, destructive hints (FR-021, FR-022). Errors keep the structured `McpToolError` envelope. Stateless: nothing survives a call | PASS |
-| II. Spec-Driven Development | spec.md (13 clarifications) → research.md (R1–R10) → data-model.md / contracts/ / quickstart.md → this plan → tasks.md. Roles distinct in artifacts | PASS |
+| II. Spec-Driven Development | spec.md (17 clarifications across two clarify rounds) → research.md (R1–R10) → data-model.md / contracts/ / quickstart.md → this plan → tasks.md. Roles distinct in artifacts | PASS |
 | III. Contract-First API Design | contracts/ hold one file per toolset generated from live `tools/list` plus resources.md; every tool maps 1:1 to an `IdentityApi`/`CourierApi`/`MetadataApi` operation or a documented multi-page scan. Breaking changes (`limit`→`pageSize`, batch result shape) are versioned and documented (§ Breaking changes). Error codes unchanged across SDK and raw-HTTP paths (FR-026) | PASS |
 | IV. Operational Excellence | Structured JSON logs with correlation IDs; warn/error forwarded via MCP `logging`, level adjustable (FR-024); every Kratos error incl. raw-HTTP timeout mapped (`KratosHttpError` → `mapError`); health/ready/version tools; URL userinfo stripped before logging (FR-012); credential redaction default-on (FR-010); no traits/tokens logged | PASS |
 | V. Simplicity & YAGNI | One registration path replaces ~70 % duplicated scaffolding (SC-009). Every non-thin-proxy piece cites an FR (§ Complexity Tracking). No retries, no per-type redaction policy, no HTTP transport, no SDK v2, no prompts | PASS |
@@ -44,7 +44,7 @@ Fix the two silent-correctness defects (list tools never return a cursor; filter
 ```text
 specs/011-architecture-hardening/
 ├── plan.md              # This file
-├── spec.md              # 6 user stories, FR-001…FR-034, SC-001…SC-010, 13 clarifications
+├── spec.md              # 6 user stories, FR-001…FR-034, SC-001…SC-010, 17 clarifications
 ├── research.md          # Phase 0 — R1 Kratos release check … R10 v26.2.0 drift
 ├── data-model.md        # Phase 1 — Config, ToolDefinition, presets, wire structures, resources
 ├── quickstart.md        # Phase 1 — operator flows per user story, breaking-change table
@@ -254,6 +254,6 @@ See `tasks.md` (`/speckit.tasks`). Story → decision map used to order it:
 
 - Spec **Out of Scope** in full: Streamable HTTP transport, MCP prompts, retries/backoff, Dockerfile, SDK v2 / Zod 4 migration, release-please + Trusted Publishing (feature 006), per-credential-type exposure policy.
 - **R1 unreleased Kratos deltas** (next feature once a release ships): `POST /admin/sessions` bulk manage → `kratos_manage_sessions`; `deviceauthn` / `identifier_first` credential types → extend `ALL_CREDENTIAL_TYPES`; TOTP/WebAuthn/passkey/lookup-secret import → extend the identity import body; `POST /admin/test-login-flows` (out of scope).
-- **Constitution PATCH**: update the Technology Stack table (`@modelcontextprotocol/sdk ^1.30.x`, lockfile `bun.lock`).
+- **Constitution PATCH**: done — 1.1.1 (2026-09-05).
 - `.env.test.local.example` still references old version examples in some strings (`tests/setup/config.ts` hints) — cosmetic.
 - Analytics page size (250) vs session-scan page size (100) are documented separately in tool descriptions; unify only if Kratos changes its per-endpoint maxima.
