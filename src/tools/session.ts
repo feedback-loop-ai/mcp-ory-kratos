@@ -8,6 +8,7 @@
 import type { Session } from "@ory/kratos-client";
 import type { z } from "zod";
 import { inTimeRange, nextPageTokenOf } from "../kratos/pagination.js";
+import { revokeAllSessions } from "../kratos/sessions.js";
 import {
   DeleteIdentitySessionsInputSchema,
   DisableSessionInputSchema,
@@ -271,10 +272,12 @@ export function registerSessionTools(ctx: ToolContext): void {
     confirmMessage: (args) =>
       `Delete all sessions for identity ${args.identityId}? The user will be logged out everywhere.`,
     run: async (args) => {
-      await ctx.clients.identity.deleteIdentitySessions({ id: args.identityId });
+      const deleted = await revokeAllSessions(ctx.clients.identity, args.identityId);
       return {
         success: true,
-        message: `All sessions for identity ${args.identityId} have been deleted`,
+        message: deleted
+          ? `All sessions for identity ${args.identityId} have been deleted`
+          : `Identity ${args.identityId} had no active sessions`,
       };
     },
   });

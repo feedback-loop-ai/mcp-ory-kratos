@@ -13,6 +13,7 @@ import type {
 } from "@ory/kratos-client";
 import type { z } from "zod";
 import { nextPageTokenOf } from "../kratos/pagination.js";
+import { revokeAllSessions } from "../kratos/sessions.js";
 import { ALL_CREDENTIAL_TYPES, redactCredentials } from "../kratos/types.js";
 import {
   BatchPatchIdentitiesInputSchema,
@@ -239,10 +240,10 @@ export function registerIdentityTools(ctx: ToolContext): void {
         id: args.id,
         jsonPatch: [{ op: "replace", path: "/state", value: args.state }],
       });
-      if (args.revokeSessions) {
-        await clients.identity.deleteIdentitySessions({ id: args.id });
-      }
-      return { ...response.data, sessionsRevoked: args.revokeSessions } as Passthrough;
+      const sessionsRevoked = args.revokeSessions
+        ? await revokeAllSessions(clients.identity, args.id)
+        : false;
+      return { ...response.data, sessionsRevoked } as Passthrough;
     },
   });
 

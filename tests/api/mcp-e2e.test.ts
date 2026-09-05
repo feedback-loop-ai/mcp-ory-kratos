@@ -117,6 +117,45 @@ describe("MCP server e2e (stdio)", () => {
     expect(gone.data.error.code).toBe("NOT_FOUND");
   });
 
+  it("suspends and reactivates an identity via kratos_set_identity_state", async () => {
+    const create = await call<{ id: string }>("kratos_create_identity", {
+      schemaId,
+      traits: { email: `mcp-e2e-state-${Date.now()}@example.com` },
+    });
+    created.push(create.data.id);
+
+    const off = await call<{ state: string; sessionsRevoked: boolean }>(
+      "kratos_set_identity_state",
+      { id: create.data.id, state: "inactive", revokeSessions: true },
+    );
+    expect(off.raw.isError).toBeFalsy();
+    expect(off.data.state).toBe("inactive");
+    // A freshly created identity has no sessions: revocation is a no-op, reported truthfully
+    expect(off.data.sessionsRevoked).toBe(false);
+    const sessions = await call<{ count: number }>("kratos_list_identity_sessions", {
+      identityId: create.data.id,
+    });
+    expect(sessions.data.count).toBe(0);
+
+    const on = await call<{ state: string }>("kratos_set_identity_state", {
+      id: create.data.id,
+      state: "active",
+    });
+    expect(on.data.state).toBe("active");
+  });
+
+  it("lists and fetches identity schemas as tools", async () => {
+    const list = await call<{ items: Array<{ id: string }>; count: number }>(
+      "kratos_list_identity_schemas",
+    );
+    expect(list.raw.isError).toBeFalsy();
+    expect(list.data.items.map((s) => s.id)).toContain(schemaId);
+
+    const get = await call<Record<string, unknown>>("kratos_get_identity_schema", { id: schemaId });
+    expect(get.raw.isError).toBeFalsy();
+    expect(get.data).toHaveProperty("properties");
+  });
+
   it("serves identity schemas as a resource template", async () => {
     const { resources } = await client.listResources();
     expect(resources.map((r) => r.uri)).toContain(`kratos://schemas/${schemaId}`);
