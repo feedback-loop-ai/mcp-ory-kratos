@@ -206,7 +206,7 @@ Single project: `src/`, `tests/` at repository root (per plan.md). CI lives in `
 - [x] T063 Bump `package.json` version `0.2.0` → `0.3.0` so the MCP-reported version (read from `package.json` in `src/server.ts`) and the future release tag match (FR-025) (commit bb7e40c)
 - [x] T064 Constitution PATCH 1.1.0 → 1.1.1 in `.specify/memory/constitution.md`: stack table tracks `@modelcontextprotocol/sdk ^1.30.x`, lockfile `bun.lock`, Kratos ^26.2.x (plan Constitution Check deviation) (commit 88ca6ec)
 - [x] T065 Run full verification: `bun run lint`, `bun run typecheck`, `bun run test:unit` (coverage ≥ thresholds, suite < 5 s), `bun audit --audit-level=high` (0 findings), `docker compose up -d --wait && bun run test:api` (FR-028, FR-031, SC-006, SC-008, SC-010) (commit 976cd06)
-- [ ] T066 After merge, tag `v0.3.0` through the feature 006 release workflow (`.github/workflows/release.yml`) so package version, MCP-reported version and git tag all read `0.3.0` (FR-025)
+- [x] T066 After merge, tag `v0.3.0` through the feature 006 release workflow (`.github/workflows/release.yml`) so package version, MCP-reported version and git tag all read `0.3.0` (FR-025) (tag v0.3.0 → dcefb5f, npm 0.3.0 published 2026-09-05)
 - [x] T067 [P] Extend `tests/api/mcp-e2e.test.ts` to drive `kratos_set_identity_state` (with `revokeSessions`) and `kratos_list_identity_schemas` / `kratos_get_identity_schema` over stdio against real Kratos, as plan.md § Project Structure claims for the e2e file; these paths are currently covered only by the in-memory harness (`tests/unit/identity-tools.test.ts`) (FR-029, US4 acceptance 4–5) (commit 4981def)
 - [x] T068 Add `src/kratos/sessions.ts` `revokeAllSessions` so `kratos_set_identity_state` (revokeSessions) and `kratos_delete_identity_sessions` treat Kratos "no sessions" (404 v1.x / 400 v26.x) as success; `sessionsRevoked` (set-state) and `sessionsExisted` (delete-sessions) report whether sessions existed, any other status maps to the structured error; unit tests in `tests/unit/sessions-helper.test.ts` (FR-017, FR-017a, US4 acceptance 4; found by T067) (commit 4981def)
 - [x] T069 Remove the explicit `any` from `src/tools/define.ts`: the `run` wrapper is widened to the SDK callback type via `unknown as ToolCallback<I>` so `src/` carries zero `any` (Constitution VII; plan Constitution Check row VII) (commit 9e2fdd0)
@@ -348,7 +348,7 @@ Every FR — FR-001…FR-034 including the lettered sub-requirements FR-001a, FR
 
 ## Open follow-ups
 
-- **T066** — tag `v0.3.0` via the release workflow after merge (FR-025 requires package version, MCP version and git tag to match; the first two are already `0.3.0`, the tag does not exist until release).
+- **T066** — closed: `v0.3.0` tagged at `dcefb5f`, `mcp-ory-kratos@0.3.0` on npm (2026-09-05). Release needed three publish attempts: `prepublishOnly` on a Node-only runner (#24), an npm `EOVERRIDE` on a direct-dep override (#25), and an `NPM_TOKEN` lacking 2FA bypass (rotated).
 - **T067** — closed (commit 4981def): e2e now drives set-state and both schema tools over stdio. Doing so exposed that Kratos v26.2.0 answers 400 when revoking sessions of an identity that has none, which made `revokeSessions: true` fail — fixed in T068.
 - The plan's constitution PATCH follow-up is **closed** (commit 88ca6ec, constitution 1.1.1) and is recorded as done in T064.
 
