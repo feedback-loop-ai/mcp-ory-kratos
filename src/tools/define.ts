@@ -142,7 +142,10 @@ export function defineTool<I extends AnyObjectSchema, O extends AnyObjectSchema>
         if (destructive && config.confirmDestructive && def.confirmMessage) {
           const ok = await confirmViaElicitation(server, def.confirmMessage(args as z.infer<I>));
           if (!ok) {
-            log.info("Tool cancelled by user", { tool: def.name });
+            log.info("Tool cancelled by user", {
+              tool: def.name,
+              durationMs: Date.now() - startTime,
+            });
             return toolResult(CANCELLED, { structured });
           }
         }

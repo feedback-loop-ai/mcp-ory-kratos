@@ -13,16 +13,16 @@
 - [x] CHK003 Is the shape of the declined-confirmation result defined so it can be distinguished from an error result? [Clarity, Spec §Key Entities "Cancelled Result"]
 - [x] CHK004 Is the behaviour defined when the confirmation prompt itself fails or times out, and is it distinguished from a decline? [Edge Case, Spec §Edge Cases]
 - [x] CHK005 Does the spec require confirmation to be applied by the shared registration contract, with a stated failure when a destructive tool omits a prompt? [Completeness, Spec §FR-009]
-- [ ] CHK006 Is the content of the confirmation prompt specified (what the operator is shown — tool name, target ID, irreversibility statement)? [Gap, Spec §FR-009]
-  Finding: FR-009 requires "a confirmation prompt" and Key Entities define the Cancelled Result, but nothing states what the elicitation message must contain; an empty or generic prompt would satisfy the FR as written.
-- [ ] CHK007 Is the outcome defined for an elicitation response that is accepted but does not affirmatively confirm (e.g. confirm field false or missing)? [Ambiguity, Spec §FR-009]
-  Finding: only "declined" is specified; plan.md D4 treats anything other than accept+`confirm === true` as cancelled, but the spec does not say so.
-- [ ] CHK008 Is the `message` field of the Cancelled Result specified (fixed text, or derived from the prompt)? [Gap, Spec §Key Entities]
-  Finding: the field exists in the entity definition but its content is undefined, so SC-004 can be verified while agents receive an unhelpful or inconsistent message.
-- [ ] CHK009 Are requirements consistent between FR-021 (every tool returns structured content matching its declared output schema) and FR-009 (destructive tools may return `{cancelled, message}` instead of their declared output)? [Conflict, Spec §FR-009, §FR-021]
-  Finding: the two FRs are only reconcilable if the declared output schema admits the cancelled shape; plan.md D1 introduces `withCancellation` to do this, but the spec never states that destructive output schemas must admit it.
-- [ ] CHK010 Is the classification of `kratos_batch_patch_identities` consistent between FR-006 (batch create = non-destructive) and FR-020a (batch patch listed among identity *write* tools with last-write-wins semantics)? [Ambiguity, Spec §FR-006, §FR-020a]
-  Finding: if the batch tool only creates identities, last-write-wins/conflict language does not apply to it; if it can update, it must carry the destructive hint. The spec should say which.
+- [x] CHK006 Is the content of the confirmation prompt specified (what the operator is shown — tool name, target ID, irreversibility statement)? [Gap, Spec §FR-009]
+  Resolved: FR-009a (action + every target ID + consequence; one boolean `confirm`) and Key Entities "Confirmation Prompt".
+- [x] CHK007 Is the outcome defined for an elicitation response that is accepted but does not affirmatively confirm (e.g. confirm field false or missing)? [Ambiguity, Spec §FR-009]
+  Resolved: FR-009a and Edge Cases — only `accept` + `confirm === true` proceeds; everything else is a decline.
+- [x] CHK008 Is the `message` field of the Cancelled Result specified (fixed text, or derived from the prompt)? [Gap, Spec §Key Entities]
+  Resolved: FR-009b and Key Entities — fixed string `Cancelled by user`.
+- [x] CHK009 Are requirements consistent between FR-021 (every tool returns structured content matching its declared output schema) and FR-009 (destructive tools may return `{cancelled, message}` instead of their declared output)? [Conflict, Spec §FR-009, §FR-021]
+  Resolved: FR-021 now requires destructive output schemas to admit the cancelled shape; error results are exempt (no structured content).
+- [x] CHK010 Is the classification of `kratos_batch_patch_identities` consistent between FR-006 (batch create = non-destructive) and FR-020a (batch patch listed among identity *write* tools with last-write-wins semantics)? [Ambiguity, Spec §FR-006, §FR-020a]
+  Resolved: FR-006 — batch tool is create-only and non-destructive; listed in FR-020a only for race semantics.
 
 ## Exposure Controls & Redaction
 
@@ -32,18 +32,18 @@
 - [x] CHK014 Is behaviour defined when credential exposure is enabled but no credential types are requested? [Edge Case, Spec §Edge Cases]
 - [x] CHK015 Is rejection of calls to hidden tools specified with a concrete error kind that is indistinguishable from a non-existent tool? [Clarity, Spec §FR-007, §FR-008]
 - [x] CHK016 Are recovery link/code outputs required to be described as account-takeover-equivalent secrets? [Completeness, Spec §FR-013]
-- [ ] CHK017 Are the credential types that pass through *unredacted* (e.g. `code`) stated explicitly, so the redaction set is closed rather than implied by omission? [Ambiguity, Spec §FR-010]
-  Finding: FR-010 lists what is redacted; a new Kratos credential type (Assumptions mention `deviceauthn`, `identifier_first`) would default to exposure with no requirement saying whether unknown types are redacted or passed through.
-- [ ] CHK018 Are the credential-inclusion and redaction requirements defined for `kratos_get_identity_by_external_id` as well as `kratos_get_identity` and `kratos_list_identities`? [Gap, Spec §FR-010, §FR-011]
-  Finding: FR-011 names two tools; the external-ID lookup from feature 008 can also return credentials and is not mentioned (plan.md D5 covers it, the spec does not).
-- [ ] CHK019 Is the behaviour of an empty-string `KRATOS_TOOLSETS` value (and any "all" sentinel) specified? [Gap, Spec §FR-007, §FR-027]
-  Finding: FR-027 covers unknown names; nothing says whether an empty list means "all toolsets" or "no tools" — plan.md D10 chooses "all" without a spec requirement behind it.
-- [ ] CHK020 Are the accepted spellings of boolean runtime flags specified (the marker text says `=1`; are `true`/`yes`/`on` valid)? [Gap, Spec §Key Entities "Runtime Flags"]
-  Finding: the only value ever named is `1`; plan.md D10 accepts four spellings, but an operator reading the spec cannot know which are honoured.
-- [ ] CHK021 Are non-logging requirements for sensitive payloads (traits, credential config, recovery links) stated — i.e. that redaction applies to log entries as well as tool output? [Gap, Spec §FR-024a, Constitution IV]
-  Finding: FR-012 strips URL user-info from logs and FR-024a lists what invocation entries carry, but no requirement says that recovery secrets or unredacted credential config must never appear in a log entry forwarded to the client.
-- [ ] CHK022 Is the content of the connection resource specified beyond "credentials stripped" (does it report enabled toolsets and read-only state)? [Gap, Spec §FR-012]
-  Finding: plan.md D8 adds `toolsets`/`readOnly` to the resource; the spec requires only stripping, so this contract addition has no requirement.
+- [x] CHK017 Are the credential types that pass through *unredacted* (e.g. `code`) stated explicitly, so the redaction set is closed rather than implied by omission? [Ambiguity, Spec §FR-010]
+  Resolved: FR-010 closed redacted-set; unknown/other types pass through; risk recorded in Assumptions.
+- [x] CHK018 Are the credential-inclusion and redaction requirements defined for `kratos_get_identity_by_external_id` as well as `kratos_get_identity` and `kratos_list_identities`? [Gap, Spec §FR-010, §FR-011]
+  Resolved: FR-010a — redaction on get-by-id and list items; external-ID lookup requests no credentials in this release (spec now matches code, not plan D5).
+- [x] CHK019 Is the behaviour of an empty-string `KRATOS_TOOLSETS` value (and any "all" sentinel) specified? [Gap, Spec §FR-007, §FR-027]
+  Resolved: FR-007 — unset/empty/`all` = every toolset; zero toolsets impossible.
+- [x] CHK020 Are the accepted spellings of boolean runtime flags specified (the marker text says `=1`; are `true`/`yes`/`on` valid)? [Gap, Spec §Key Entities "Runtime Flags"]
+  Resolved: FR-007a — `1/true/yes/on` case-insensitive; anything else false; `=1` canonical.
+- [x] CHK021 Are non-logging requirements for sensitive payloads (traits, credential config, recovery links) stated — i.e. that redaction applies to log entries as well as tool output? [Gap, Spec §FR-024a, Constitution IV]
+  Resolved: FR-012a — logs never carry traits, credential config, recovery secrets or bodies.
+- [x] CHK022 Is the content of the connection resource specified beyond "credentials stripped" (does it report enabled toolsets and read-only state)? [Gap, Spec §FR-012]
+  Resolved: FR-012 enumerates the connection resource fields (incl. `toolsets`, `readOnly`).
 
 ## Pagination & Scan Semantics
 
@@ -52,36 +52,36 @@
 - [x] CHK025 Is behaviour defined when `pageSize` matches are collected before the collection ends (cursor returned, not truncated)? [Edge Case, Spec §Edge Cases, §FR-002]
 - [x] CHK026 Is the fetch strategy for multi-page scans (strictly sequential, no throttling) specified measurably? [Measurability, Spec §FR-004a]
 - [x] CHK027 Is behaviour defined for a cursor issued by another Kratos instance or an earlier run? [Edge Case, Spec §Edge Cases]
-- [ ] CHK028 Is `truncated` defined for the boundary where the collection ends on exactly the cap-th page (cap reached *and* no pages remain)? [Ambiguity, Spec §FR-002, §FR-003]
-  Finding: "true only when the cap stopped the scan" can be read either way when the last allowed page is also the last page; plan.md D6 resolves it as `false` ("cap hit with more remaining"), the spec should state that `truncated` implies a resume cursor is present.
-- [ ] CHK029 Are the upstream page sizes used by scanners stated for every scanner — the session scan is fixed at 100, but is the analytics scan page size (250 per plan.md) specified? [Gap, Spec §FR-002, §FR-003]
-  Finding: the spec names 100 for filtered session listing only; analytics page size, and therefore what one "page" of `pagesScanned` means for SC-002-style reasoning, is unspecified and differs (250) in the plan.
-- [ ] CHK030 Are the bounds and default of `pageSize` for plain list tools specified (min, max, default)? [Gap, Spec §FR-001, §FR-005]
-  Finding: FR-005 renames the parameter but no requirement states its range; plan.md fixes 1–100 default 20 without a spec source, and Kratos' per-endpoint maxima differ.
-- [ ] CHK031 Are the bounds of `maxPages` / `KRATOS_MAX_SCAN_PAGES` specified (minimum, hard maximum, and what happens on out-of-range values)? [Gap, Spec §FR-003, §Clarifications]
-  Finding: only the default (20) is specified; the plan's hard maximum of 1000 and the rejection of 0 or negative values have no requirement.
-- [ ] CHK032 Is `count` defined for scan results as the number of returned matches (not items scanned), consistent with FR-001's definition for list tools? [Ambiguity, Spec §FR-001, §FR-002]
-  Finding: FR-001 defines `count` for list tools; FR-002 defines `pagesScanned` and `truncated` but does not say whether `count` is present or what it counts for filtered scans.
-- [ ] CHK033 Is behaviour specified when an upstream request fails part-way through a multi-page scan (partial matches returned with a cursor, or the whole call fails)? [Gap, Exception Flow, Spec §FR-002, §FR-003]
-  Finding: the spec covers cap-hit and invalid-cursor cases but not a mid-scan upstream error; with no retries (Assumptions) this path is reachable and its result shape is undefined.
+- [x] CHK028 Is `truncated` defined for the boundary where the collection ends on exactly the cap-th page (cap reached *and* no pages remain)? [Ambiguity, Spec §FR-002, §FR-003]
+  Resolved: FR-002b — `truncated` implies a resume cursor; false when the collection ends on the last permitted page.
+- [x] CHK029 Are the upstream page sizes used by scanners stated for every scanner — the session scan is fixed at 100, but is the analytics scan page size (250 per plan.md) specified? [Gap, Spec §FR-002, §FR-003]
+  Resolved: FR-002a — session scan 100/page, analytics 250/page; descriptions must state it.
+- [x] CHK030 Are the bounds and default of `pageSize` for plain list tools specified (min, max, default)? [Gap, Spec §FR-001, §FR-005]
+  Resolved: FR-001a — `pageSize` 1–100 default 20, single bound across endpoints.
+- [x] CHK031 Are the bounds of `maxPages` / `KRATOS_MAX_SCAN_PAGES` specified (minimum, hard maximum, and what happens on out-of-range values)? [Gap, Spec §FR-003, §Clarifications]
+  Resolved: FR-003a — `maxPages` and `KRATOS_MAX_SCAN_PAGES` 1–1000 default 20; input rejection / startup failure.
+- [x] CHK032 Is `count` defined for scan results as the number of returned matches (not items scanned), consistent with FR-001's definition for list tools? [Ambiguity, Spec §FR-001, §FR-002]
+  Resolved: FR-002b — `count` = returned matches, never items scanned.
+- [x] CHK033 Is behaviour specified when an upstream request fails part-way through a multi-page scan (partial matches returned with a cursor, or the whole call fails)? [Gap, Exception Flow, Spec §FR-002, §FR-003]
+  Resolved: Edge Cases — mid-scan upstream failure fails the whole call; no partial result.
 
 ## Breaking-Change & Versioning
 
 - [x] CHK034 Is every breaking input-contract change identified as breaking, documented, and tied to a release version? [Completeness, Spec §FR-005, §FR-025]
 - [x] CHK035 Are the deprecated-alias rules symmetric where both tools carry the alias, and is the asymmetry (alias only on `kratos_get_identity`) stated explicitly? [Consistency, Spec §FR-011, §Clarifications]
-- [ ] CHK036 Is the change to the `kratos_batch_patch_identities` result shape recorded as a requirement, given the Edge Cases section says the per-item report is "unchanged from feature 010"? [Conflict, Spec §Edge Cases vs plan.md §Breaking Changes]
-  Finding: plan.md lists a new `{results:[{action, identity, patchId, error}], summary}` shape as a breaking change; the spec asserts the report is unchanged. One of them is wrong, and a breaking change without an FR cannot be reviewed.
-- [ ] CHK037 Is a removal timeline or deprecation policy stated for the `includeCredentials` alias? [Gap, Spec §FR-011]
-  Finding: the alias is "deprecated" but no requirement says when it may be removed or whether use of it must be warned about.
+- [x] CHK036 Is the change to the `kratos_batch_patch_identities` result shape recorded as a requirement, given the Edge Cases section says the per-item report is "unchanged from feature 010"? [Conflict, Spec §Edge Cases vs plan.md §Breaking Changes]
+  Resolved: FR-016a records the new batch result shape as a breaking change (0.3.0); the Edge Case sentence was corrected.
+- [x] CHK037 Is a removal timeline or deprecation policy stated for the `includeCredentials` alias? [Gap, Spec §FR-011]
+  Resolved: FR-011 — alias kept through pre-1.0, removed no earlier than 1.0.0, deprecated in schema description, no runtime warning.
 
 ## Observability
 
 - [x] CHK038 Are the mandatory fields of every invocation log entry (tool name, correlation ID, duration, error code/message) enumerated? [Completeness, Spec §FR-024a, §Key Entities "Invocation Trace"]
 - [x] CHK039 Are the log levels forwarded to the client and the client's ability to change the level specified? [Clarity, Spec §FR-024]
-- [ ] CHK040 Is the content of the warning logged when every item in a batch fails specified (message text, counts carried)? [Gap, Spec §Edge Cases]
-  Finding: "a warning is logged" is the entire requirement; the fields it must carry (failed/total counts, correlation ID) are not stated, so the warning cannot be tested beyond its existence.
-- [ ] CHK041 Is it specified whether a cancelled (declined) invocation is logged as `Tool completed`, `Tool failed`, or a third outcome? [Ambiguity, Spec §FR-024a, §FR-009]
-  Finding: FR-024a allows exactly two completion entries; a decline is neither a success in the tool's own terms nor a failure, and the spec does not say which entry it produces.
+- [x] CHK040 Is the content of the warning logged when every item in a batch fails specified (message text, counts carried)? [Gap, Spec §Edge Cases]
+  Resolved: Edge Cases — `Batch patch had failures` with tool, `correlationId`, `failed`; once per invocation when any item failed.
+- [x] CHK041 Is it specified whether a cancelled (declined) invocation is logged as `Tool completed`, `Tool failed`, or a third outcome? [Ambiguity, Spec §FR-024a, §FR-009]
+  Resolved: FR-009b / FR-024a — third completion outcome `Tool cancelled by user`.
 
 ## Quality Gates & CI
 
@@ -89,8 +89,8 @@
 - [x] CHK043 Is the Kratos version the integration job must run against pinned in the requirements? [Clarity, Spec §FR-029, §SC-007]
 - [x] CHK044 Are the dependency-audit severity threshold (FR-031: high) and the success criterion (SC-008: zero high or critical) consistent? [Consistency, Spec §FR-031, §SC-008]
 - [x] CHK045 Is "exercised through a real MCP client" defined precisely enough (in-memory, real server factory) to distinguish it from a stubbed registration? [Clarity, Spec §FR-030]
-- [ ] CHK046 Is the set of files excluded from the coverage denominator specified (e.g. CLI entry point), so "measured over the server sources" is unambiguous? [Ambiguity, Spec §FR-028]
-  Finding: plan.md D14 excludes `src/index.ts`; the spec's "server sources" does not say whether exclusions are permitted, so the 80% figure can be gamed by widening the exclusion list.
+- [x] CHK046 Is the set of files excluded from the coverage denominator specified (e.g. CLI entry point), so "measured over the server sources" is unambiguous? [Ambiguity, Spec §FR-028]
+  Resolved: FR-028 — only `src/index.ts` may be excluded; further exclusions need a spec change; statements threshold (80%) added.
 
 ## Dependencies & Assumptions
 
@@ -102,11 +102,11 @@
 
 - [x] CHK050 Is the reasoning for classifying `kratos_extend_session` as destructive recorded, so the hint matrix is not read as an error? [Clarity, Spec §Edge Cases]
 - [x] CHK051 Is the supersession of feature 010's "no credential import" exclusion stated explicitly? [Consistency, Spec §FR-016]
-- [ ] CHK052 Is the required value of the open-world hint specified for tools, given FR-006 requires it to be declared? [Gap, Spec §FR-006]
-  Finding: read-only/destructive/idempotent values are fixed by the clarified hint matrix; open-world is required to be present but its value (plan: `false` everywhere) is never stated.
+- [x] CHK052 Is the required value of the open-world hint specified for tools, given FR-006 requires it to be declared? [Gap, Spec §FR-006]
+  Resolved: FR-006 — `openWorldHint: false` on every tool.
 
 ## Notes
 
 - 52 items; 51 carry a traceability tag (98%).
-- 27 ticked, 25 unticked. Unticked items are inputs to the next `/speckit.analyze` round; several (CHK009, CHK028, CHK036) are places where plan.md has already made a decision the spec does not contain — resolve by amending the spec, not by treating the plan as the source of truth.
-- Highest-impact findings for a release gate: CHK009 (FR-009/FR-021 conflict), CHK036 (undocumented breaking change to the batch result), CHK028/CHK029 (scan semantics the SC-002 claim depends on), CHK006 (unspecified confirmation prompt content).
+- 52 ticked, 0 unticked after `/speckit.clarify` round 3 (2026-09-05): every former finding is resolved by a spec amendment (FR-001a, FR-002a/b, FR-003a, FR-006, FR-007/007a, FR-009a/b, FR-010/010a, FR-011, FR-012/012a, FR-016a, FR-017a, FR-021, FR-024a, FR-028, Edge Cases, Key Entities, Assumptions). Note CHK018: the spec follows the shipped code (external-ID lookup returns no credentials), which differs from plan.md D5 — plan.md should be corrected in the next `/speckit.analyze`.
+- Former highest-impact findings (CHK009, CHK036, CHK028/CHK029, CHK006) are closed; no Conflicts remain.

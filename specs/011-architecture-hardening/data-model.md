@@ -80,7 +80,7 @@ error:    { content: [{type:"text", text: JSON {error: McpToolError}}], isError:
 | `ALL_CREDENTIAL_TYPES` (include/delete) | `CREDENTIAL_TYPES` + profile, saml, link_recovery, code_recovery |
 | `SENSITIVE_CREDENTIAL_TYPES` (redacted) | password, oidc, saml, totp, lookup_secret, webauthn, passkey |
 
-**Redaction**: for each credential whose type is sensitive, `config` is replaced by the string `"[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]"` (omitted if `config` was absent); all other fields (`type`, `identifiers`, `version`, `created_at`, `updated_at`) pass through. Applied to `kratos_get_identity`, `kratos_get_identity_by_external_id` (when credentials requested) and each item of `kratos_list_identities`.
+**Redaction**: for each credential whose type is sensitive, `config` is replaced by the string `"[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]"` (omitted if `config` was absent); all other fields (`type`, `identifiers`, `version`, `created_at`, `updated_at`) pass through. Applied to `kratos_get_identity` and each item of `kratos_list_identities` — the only tools that can request credentials (`kratos_get_identity_by_external_id` has no `includeCredential` parameter and never returns credential config).
 
 ### Identity import body (camelCase input → Kratos snake_case)
 
