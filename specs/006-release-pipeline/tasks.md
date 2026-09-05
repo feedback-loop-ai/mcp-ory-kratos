@@ -12,8 +12,8 @@
 These items MUST be completed before User Story 2 tasks can succeed:
 
 - [x] PRE-001 For initial v0.1.0 release ONLY: Configure NPM_TOKEN secret (Settings → Secrets → Actions)
-- [ ] PRE-002 After initial publish: Configure Trusted Publisher on npmjs.com (org: feedback-loop-ai, repo: mcp-ory-kratos, workflow: release.yml) — workflow side done 2026-09-05 (npm ≥ 11.5.1 on the publish runner, `--provenance`); npmjs.com link pending, verified by the next release publishing via OIDC
-- [ ] PRE-003 After Trusted Publishing configured: Remove NPM_TOKEN secret from repository
+- [x] PRE-002 After initial publish: Configure Trusted Publisher on npmjs.com (org: feedback-loop-ai, repo: mcp-ory-kratos, workflow: release.yml) — done 2026-09-06 (workflow: npm ≥ 11.5.1 on the publish runner, `--provenance`; npmjs.com trusted publisher added). First OIDC publish will be the next `v*` tag; the identical setup was verified on mcp-scaleway@0.4.1 (SLSA provenance attestation bound to release.yml)
+- [x] PRE-003 After Trusted Publishing configured: Remove NPM_TOKEN secret from repository — done 2026-09-06 (secret deleted; `NODE_AUTH_TOKEN` env removed from release.yml)
 
 **Note**: Prerequisites are manual configuration steps, not code tasks. OIDC Trusted Publishing (PRE-002) is the recommended approach but requires the package to exist first. See quickstart.md for detailed instructions.
 
