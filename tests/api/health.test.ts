@@ -5,13 +5,9 @@
  * User Story 6: Run Health Check Tests (Priority: P3)
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../setup/config";
-import {
-  createKratosClients,
-  createTestContext,
-  type TestContext,
-} from "../setup/context";
+import { createKratosClients, createTestContext, type TestContext } from "../setup/context";
 
 describe("Health API", () => {
   let ctx: TestContext;
@@ -112,13 +108,11 @@ describe("Health API", () => {
   describe("Endpoint Availability", () => {
     it("all health endpoints should be accessible", async () => {
       // Run all health checks in parallel
-      const [aliveResponse, readyResponse, versionResponse] = await Promise.all(
-        [
-          ctx.clients.metadata.isAlive(),
-          ctx.clients.metadata.isReady(),
-          ctx.clients.metadata.getVersion(),
-        ]
-      );
+      const [aliveResponse, readyResponse, versionResponse] = await Promise.all([
+        ctx.clients.metadata.isAlive(),
+        ctx.clients.metadata.isReady(),
+        ctx.clients.metadata.getVersion(),
+      ]);
 
       expect(aliveResponse.status).toBe(200);
       expect(readyResponse.status).toBe(200);

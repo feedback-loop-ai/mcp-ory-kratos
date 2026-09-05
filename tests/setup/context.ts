@@ -5,12 +5,7 @@
  * Includes schema discovery and caching for dynamic test data generation.
  */
 
-import {
-  Configuration,
-  CourierApi,
-  IdentityApi,
-  MetadataApi,
-} from "@ory/kratos-client";
+import { Configuration, CourierApi, IdentityApi, MetadataApi } from "@ory/kratos-client";
 import type { TestConfig } from "./config";
 import { getAuthHeaders } from "./config";
 
@@ -120,7 +115,7 @@ export function createKratosClients(config: TestConfig): TestKratosClients {
  */
 export async function fetchIdentitySchemas(
   clients: TestKratosClients,
-  config: TestConfig
+  config: TestConfig,
 ): Promise<CachedSchema[]> {
   try {
     const response = await clients.identity.listIdentitySchemas({
@@ -166,12 +161,10 @@ export async function fetchIdentitySchemas(
       });
 
       if (Array.isArray(response.data)) {
-        return response.data.map(
-          (schemaContainer: { id?: string; schema?: object }) => ({
-            id: schemaContainer.id || "unknown",
-            schema: schemaContainer.schema || {},
-          })
-        );
+        return response.data.map((schemaContainer: { id?: string; schema?: object }) => ({
+          id: schemaContainer.id || "unknown",
+          schema: schemaContainer.schema || {},
+        }));
       }
     } catch {
       // Try next endpoint
@@ -180,7 +173,7 @@ export async function fetchIdentitySchemas(
 
   throw new Error(
     "Could not fetch identity schemas from Kratos. " +
-      "Ensure the Kratos instance is running and accessible."
+      "Ensure the Kratos instance is running and accessible.",
   );
 }
 
@@ -190,7 +183,7 @@ export async function fetchIdentitySchemas(
 export function createTestContext(
   clients: TestKratosClients,
   schemas: CachedSchema[] = [],
-  defaultSchemaId = "default"
+  defaultSchemaId = "default",
 ): TestContext {
   const createdIdentityIds: string[] = [];
 
@@ -220,7 +213,7 @@ export function createTestContext(
       const schema = this.schemas.get(id);
       if (!schema) {
         throw new Error(
-          `Schema '${id}' not found. Available schemas: ${[...this.schemas.keys()].join(", ")}`
+          `Schema '${id}' not found. Available schemas: ${[...this.schemas.keys()].join(", ")}`,
         );
       }
       return schema;
@@ -244,8 +237,7 @@ export function createTestContext(
           identitiesDeleted++;
         } catch (error) {
           // Only track as failure if it's not a 404 (already deleted)
-          const status = (error as { response?: { status: number } })?.response
-            ?.status;
+          const status = (error as { response?: { status: number } })?.response?.status;
           if (status !== 404) {
             failedDeletions.push(id);
           } else {
@@ -274,9 +266,7 @@ let globalContext: TestContext | null = null;
  */
 export function getTestContext(): TestContext {
   if (!globalContext) {
-    throw new Error(
-      "Test context not initialized. Call initializeTestContext first."
-    );
+    throw new Error("Test context not initialized. Call initializeTestContext first.");
   }
   return globalContext;
 }
@@ -286,7 +276,7 @@ export function getTestContext(): TestContext {
  */
 export async function initializeTestContext(
   config: TestConfig,
-  overrideSchemaId?: string
+  overrideSchemaId?: string,
 ): Promise<TestContext> {
   const clients = createKratosClients(config);
 

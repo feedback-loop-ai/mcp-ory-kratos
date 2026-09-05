@@ -17,6 +17,8 @@ const integrationOnly = isUnitRun
   ? {}
   : {
       globalSetup: "./setup/global-setup.ts",
+      // Integration tests share one Kratos (SQLite in CI is single-writer): run files serially
+      fileParallelism: false,
       setupFiles: ["./setup/test-setup.ts"],
       testTimeout: 30000,
       hookTimeout: 60000,
@@ -42,9 +44,12 @@ export default defineConfig({
       enabled: false,
       reporter: ["text", "json-summary"],
       reportsDirectory: "./coverage",
-      include: ["src/**/*.ts"],
-      exclude: ["**/*.d.ts", "**/index.ts", "**/__mocks__/**", "**/tests/**", "**/test/**"],
+      // root is ./tests, so source globs must climb one level
+      allowExternal: true,
+      include: ["**/src/**/*.ts"],
+      exclude: ["**/src/index.ts", "**/node_modules/**"],
       reportOnFailure: true,
+      thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
     },
     ...integrationOnly,
   },

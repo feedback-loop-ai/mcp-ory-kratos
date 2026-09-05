@@ -1,31 +1,31 @@
 /**
  * Structured JSON logger for the Kratos MCP Server
  *
- * Uses console.error to output logs to stderr (required for MCP stdio servers)
+ * Writes JSON lines to stderr (required for MCP stdio servers). An optional
+ * sink can forward entries to the connected MCP client via the `logging`
+ * capability.
  * @module logging/logger
  */
 
-import type { Config } from "../config.js";
-
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
 
-interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  correlationId?: string;
+/** Free-form structured context attached to a log entry */
+export type LogContext = Record<string, unknown> & {
   tool?: string;
   resource?: string;
-  kratosEndpoint?: string;
   durationMs?: number;
-  batchSize?: number;
-  succeeded?: number;
-  failed?: number;
+  error?: { code?: string; message?: string };
+};
+
+export interface LogEntry extends LogContext {
+  timestamp: string;
+  level: LogLevel;
   message: string;
-  error?: {
-    code?: string;
-    message?: string;
-  };
+  correlationId?: string;
 }
+
+/** Receives every emitted entry (after level filtering) */
+export type LogSink = (entry: LogEntry) => void;
 
 const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
   trace: 0,
@@ -37,55 +37,59 @@ const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
 
 export class Logger {
   private minLevel: LogLevel;
+  private sinks: LogSink[] = [];
 
-  constructor(config: Pick<Config, "logLevel">) {
-    this.minLevel = config.logLevel;
+  constructor(options: { logLevel: LogLevel }) {
+    this.minLevel = options.logLevel;
+  }
+
+  /** Change the minimum level at runtime (e.g. from MCP `logging/setLevel`) */
+  setLevel(level: LogLevel): void {
+    this.minLevel = level;
+  }
+
+  /** Add an extra sink; stderr output is always kept */
+  addSink(sink: LogSink): void {
+    this.sinks.push(sink);
   }
 
   private shouldLog(level: LogLevel): boolean {
     return LOG_LEVEL_ORDER[level] >= LOG_LEVEL_ORDER[this.minLevel];
   }
 
-  private log(entry: LogEntry): void {
-    if (!this.shouldLog(entry.level)) {
+  log(level: LogLevel, message: string, context?: LogContext): void {
+    if (!this.shouldLog(level)) {
       return;
     }
+    const entry: LogEntry = { timestamp: new Date().toISOString(), level, message, ...context };
     console.error(JSON.stringify(entry));
+    for (const sink of this.sinks) {
+      try {
+        sink(entry);
+      } catch {
+        // A failing sink must never break the server
+      }
+    }
   }
 
-  trace(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message">>,
-  ): void {
-    this.log({ timestamp: new Date().toISOString(), level: "trace", message, ...context });
+  trace(message: string, context?: LogContext): void {
+    this.log("trace", message, context);
   }
 
-  debug(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message">>,
-  ): void {
-    this.log({ timestamp: new Date().toISOString(), level: "debug", message, ...context });
+  debug(message: string, context?: LogContext): void {
+    this.log("debug", message, context);
   }
 
-  info(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message">>,
-  ): void {
-    this.log({ timestamp: new Date().toISOString(), level: "info", message, ...context });
+  info(message: string, context?: LogContext): void {
+    this.log("info", message, context);
   }
 
-  warn(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message">>,
-  ): void {
-    this.log({ timestamp: new Date().toISOString(), level: "warn", message, ...context });
+  warn(message: string, context?: LogContext): void {
+    this.log("warn", message, context);
   }
 
-  error(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message">>,
-  ): void {
-    this.log({ timestamp: new Date().toISOString(), level: "error", message, ...context });
+  error(message: string, context?: LogContext): void {
+    this.log("error", message, context);
   }
 
   /**
@@ -105,39 +109,28 @@ export class CorrelatedLogger {
     private correlationId: string,
   ) {}
 
-  trace(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message" | "correlationId">>,
-  ): void {
-    this.parent.trace(message, { ...context, correlationId: this.correlationId });
+  private log(level: LogLevel, message: string, context?: LogContext): void {
+    this.parent.log(level, message, { ...context, correlationId: this.correlationId });
   }
 
-  debug(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message" | "correlationId">>,
-  ): void {
-    this.parent.debug(message, { ...context, correlationId: this.correlationId });
+  trace(message: string, context?: LogContext): void {
+    this.log("trace", message, context);
   }
 
-  info(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message" | "correlationId">>,
-  ): void {
-    this.parent.info(message, { ...context, correlationId: this.correlationId });
+  debug(message: string, context?: LogContext): void {
+    this.log("debug", message, context);
   }
 
-  warn(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message" | "correlationId">>,
-  ): void {
-    this.parent.warn(message, { ...context, correlationId: this.correlationId });
+  info(message: string, context?: LogContext): void {
+    this.log("info", message, context);
   }
 
-  error(
-    message: string,
-    context?: Partial<Omit<LogEntry, "timestamp" | "level" | "message" | "correlationId">>,
-  ): void {
-    this.parent.error(message, { ...context, correlationId: this.correlationId });
+  warn(message: string, context?: LogContext): void {
+    this.log("warn", message, context);
+  }
+
+  error(message: string, context?: LogContext): void {
+    this.log("error", message, context);
   }
 }
 

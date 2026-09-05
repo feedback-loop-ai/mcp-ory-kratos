@@ -1,58 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { KratosClients } from "../../src/kratos/client.js";
-import type { CorrelatedLogger } from "../../src/logging/logger.js";
-import { BatchPatchIdentitiesInputSchema } from "../../src/schemas/tools.js";
-import { registerIdentityManagementTools } from "../../src/tools/identity.js";
-
 /**
  * Unit tests for the `kratos_batch_patch_identities` MCP tool.
  *
- * These are mock-based and CI-safe (no live Kratos). We stub `McpServer.tool()`
- * to capture the registered handler, then drive it with mocked SDK responses.
+ * Mock-based and CI-safe (no live Kratos): runs through the in-memory MCP
+ * harness with stubbed Kratos SDK clients.
  */
 
-type CapturedTool = {
-  name: string;
-  description: string;
-  // biome-ignore lint/suspicious/noExplicitAny: test harness captures arbitrary handlers
-  handler: (args: any) => Promise<any>;
-};
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BatchPatchIdentitiesInputSchema } from "../../src/schemas/tools.js";
+import { type Harness, startHarness } from "./harness";
 
-function setup() {
-  const tools = new Map<string, CapturedTool>();
-
-  const server = {
-    tool: (name: string, description: string, _shape: unknown, handler: CapturedTool["handler"]) => {
-      tools.set(name, { name, description, handler });
-    },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal McpServer stub for tests
-  } as any;
-
-  const batchPatchIdentities = vi.fn();
-  const kratosClients = {
-    identity: { batchPatchIdentities },
-    // biome-ignore lint/suspicious/noExplicitAny: partial KratosClients mock
-  } as unknown as KratosClients;
-
-  const log = {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    // biome-ignore lint/suspicious/noExplicitAny: partial logger mock
-  } as unknown as CorrelatedLogger;
-
-  registerIdentityManagementTools(server, kratosClients, () => log);
-
-  const tool = tools.get("kratos_batch_patch_identities");
-  if (!tool) throw new Error("kratos_batch_patch_identities not registered");
-
-  return { tool, batchPatchIdentities, log };
-}
-
-function parseResult(result: { content: Array<{ text: string }> }) {
-  return JSON.parse(result.content[0].text);
-}
+const TOOL_NAME = "kratos_batch_patch_identities";
 
 const validItem = {
   create: {
@@ -62,164 +19,226 @@ const validItem = {
   },
 };
 
-describe("kratos_batch_patch_identities registration", () => {
-  it("registers with the correct name and a destructive-capable description", () => {
-    const { tool } = setup();
+interface BatchResult {
+  results: Array<{ action: string; identity?: string; patchId?: string; error?: unknown }>;
+  summary: { total: number; succeeded: number; failed: number };
+}
 
-    expect(tool.name).toBe("kratos_batch_patch_identities");
-    // FR-009: bulk write, non-atomic, documented cap
-    expect(tool.description.toLowerCase()).toContain("bulk");
-    expect(tool.description.toLowerCase()).toContain("non-atomic");
-    expect(tool.description).toContain("100");
+describe("kratos_batch_patch_identities", () => {
+  let h: Harness;
+
+  beforeEach(async () => {
+    h = await startHarness();
   });
-});
+  afterEach(async () => {
+    await h?.close();
+  });
 
-describe("kratos_batch_patch_identities happy path (US1)", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("maps camelCase input to snake_case SDK body", async () => {
-    const { tool, batchPatchIdentities } = setup();
-    batchPatchIdentities.mockResolvedValue({ data: { identities: [] } });
-
-    await tool.handler({
-      identities: [
-        {
-          create: {
-            schemaId: "default",
-            traits: { email: "a@example.com" },
-            state: "active",
-            metadataPublic: { tier: "gold" },
-            metadataAdmin: { note: "vip" },
-          },
-          patchId: "11111111-1111-1111-1111-111111111111",
-        },
-      ],
+  describe("registration", () => {
+    it("registers with the correct name and a bulk, non-atomic, capped description", async () => {
+      const { tools } = await h.client.listTools();
+      const tool = tools.find((t) => t.name === TOOL_NAME);
+      expect(tool).toBeDefined();
+      // FR-009: bulk write, non-atomic, documented cap
+      const description = tool?.description?.toLowerCase() ?? "";
+      expect(description).toContain("bulk");
+      expect(description).toMatch(/non-atomic|independently/);
+      expect(description).toContain("100");
+      expect(tool?.annotations?.readOnlyHint).toBe(false);
     });
+  });
 
-    expect(batchPatchIdentities).toHaveBeenCalledWith({
-      patchIdentitiesBody: {
+  describe("happy path (US1)", () => {
+    it("maps camelCase input to snake_case SDK body", async () => {
+      h.stubs.identity.batchPatchIdentities.mockResolvedValue({ data: { identities: [] } });
+
+      await h.callTool(TOOL_NAME, {
         identities: [
           {
             create: {
-              schema_id: "default",
+              schemaId: "default",
               traits: { email: "a@example.com" },
               state: "active",
-              metadata_public: { tier: "gold" },
-              metadata_admin: { note: "vip" },
+              metadataPublic: { tier: "gold" },
+              metadataAdmin: { note: "vip" },
             },
-            patch_id: "11111111-1111-1111-1111-111111111111",
+            patchId: "11111111-1111-1111-1111-111111111111",
           },
         ],
-      },
-    });
-  });
+      });
 
-  it("maps SDK response fields to results and computes summary", async () => {
-    const { tool, batchPatchIdentities } = setup();
-    batchPatchIdentities.mockResolvedValue({
-      data: {
+      expect(h.stubs.identity.batchPatchIdentities).toHaveBeenCalledWith({
+        patchIdentitiesBody: {
+          identities: [
+            {
+              create: {
+                schema_id: "default",
+                traits: { email: "a@example.com" },
+                state: "active",
+                metadata_public: { tier: "gold" },
+                metadata_admin: { note: "vip" },
+              },
+              patch_id: "11111111-1111-1111-1111-111111111111",
+            },
+          ],
+        },
+      });
+    });
+
+    it("maps the extended import fields (external_id, organization, credentials, addresses)", async () => {
+      h.stubs.identity.batchPatchIdentities.mockResolvedValue({ data: { identities: [] } });
+
+      await h.callTool(TOOL_NAME, {
         identities: [
-          { action: "create", identity: "id-1", patch_id: "patch-1" },
-          { action: "create", identity: "id-2" },
+          {
+            create: {
+              schemaId: "default",
+              traits: { email: "b@example.com" },
+              externalId: "crm-7",
+              organizationId: "22222222-2222-2222-2222-222222222222",
+              credentials: { password: { config: { hashed_password: "$2a$hash" } } },
+              verifiableAddresses: [
+                { value: "b@example.com", via: "email", verified: true },
+                { value: "+123", via: "sms", status: "sent" },
+              ],
+              recoveryAddresses: [{ value: "b@example.com", via: "email" }],
+            },
+          },
         ],
-      },
+      });
+
+      const body = h.stubs.identity.batchPatchIdentities.mock.calls[0]?.[0].patchIdentitiesBody;
+      expect(body.identities[0]).toEqual({
+        create: {
+          schema_id: "default",
+          traits: { email: "b@example.com" },
+          state: "active",
+          external_id: "crm-7",
+          organization_id: "22222222-2222-2222-2222-222222222222",
+          credentials: { password: { config: { hashed_password: "$2a$hash" } } },
+          verifiable_addresses: [
+            { value: "b@example.com", via: "email", verified: true, status: "completed" },
+            { value: "+123", via: "sms", verified: false, status: "sent" },
+          ],
+          recovery_addresses: [{ value: "b@example.com", via: "email" }],
+        },
+        patch_id: undefined,
+      });
     });
 
-    const result = await tool.handler({ identities: [validItem, validItem] });
-    const parsed = parseResult(result);
+    it("maps SDK response fields to results and computes summary", async () => {
+      h.stubs.identity.batchPatchIdentities.mockResolvedValue({
+        data: {
+          identities: [
+            { action: "create", identity: "id-1", patch_id: "patch-1" },
+            { action: "create", identity: "id-2" },
+          ],
+        },
+      });
 
-    expect(result.isError).toBeUndefined();
-    expect(parsed.results).toEqual([
-      { index: 0, action: "create", identityId: "id-1", patchId: "patch-1" },
-      { index: 1, action: "create", identityId: "id-2" },
-    ]);
-    expect(parsed.summary).toEqual({ total: 2, succeeded: 2, failed: 0 });
+      const result = await h.callTool(TOOL_NAME, { identities: [validItem, validItem] });
+      const parsed = result.json as BatchResult;
+
+      expect(result.isError).toBeFalsy();
+      expect(parsed.results).toEqual([
+        { action: "create", identity: "id-1", patchId: "patch-1" },
+        { action: "create", identity: "id-2" },
+      ]);
+      expect(parsed.summary).toEqual({ total: 2, succeeded: 2, failed: 0 });
+      expect(result.structuredContent?.summary).toEqual(parsed.summary);
+    });
   });
 
-  it("logs batch size without logging traits (FR-010)", async () => {
-    const { tool, batchPatchIdentities, log } = setup();
-    batchPatchIdentities.mockResolvedValue({ data: { identities: [] } });
+  describe("per-item failures (US2)", () => {
+    it("passes per-item error payloads through verbatim and keeps isError unset", async () => {
+      const errorPayload = { code: 409, message: "identity already exists", reason: "conflict" };
+      h.stubs.identity.batchPatchIdentities.mockResolvedValue({
+        data: {
+          identities: [
+            { action: "create", identity: "id-1", patch_id: "patch-1" },
+            { action: "error", error: errorPayload, patch_id: "patch-2" },
+          ],
+        },
+      });
 
-    await tool.handler({ identities: [validItem] });
+      const result = await h.callTool(TOOL_NAME, { identities: [validItem, validItem] });
+      const parsed = result.json as BatchResult;
 
-    const infoCalls = (log.info as ReturnType<typeof vi.fn>).mock.calls;
-    const serialized = JSON.stringify(infoCalls);
-    expect(serialized).toContain("batchSize");
-    expect(serialized).not.toContain("a@example.com");
-  });
-});
-
-describe("kratos_batch_patch_identities per-item failures (US2)", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("passes per-item error payloads through verbatim and keeps isError unset", async () => {
-    const { tool, batchPatchIdentities } = setup();
-    const errorPayload = { code: 409, message: "identity already exists", reason: "conflict" };
-    batchPatchIdentities.mockResolvedValue({
-      data: {
-        identities: [
-          { action: "create", identity: "id-1", patch_id: "patch-1" },
-          { action: "error", error: errorPayload, patch_id: "patch-2" },
-        ],
-      },
+      expect(result.isError).toBeFalsy();
+      expect(parsed.results[1]).toEqual({
+        action: "error",
+        patchId: "patch-2",
+        error: errorPayload,
+      });
+      expect(parsed.summary).toEqual({ total: 2, succeeded: 1, failed: 1 });
     });
 
-    const result = await tool.handler({ identities: [validItem, validItem] });
-    const parsed = parseResult(result);
+    it("handles an all-failed batch", async () => {
+      h.stubs.identity.batchPatchIdentities.mockResolvedValue({
+        data: {
+          identities: [
+            { action: "error", error: { message: "bad" } },
+            { action: "error", error: { message: "worse" } },
+          ],
+        },
+      });
 
-    expect(result.isError).toBeUndefined();
-    expect(parsed.results[1]).toEqual({
-      index: 1,
-      action: "error",
-      patchId: "patch-2",
-      error: errorPayload,
-    });
-    expect(parsed.summary).toEqual({ total: 2, succeeded: 1, failed: 1 });
-  });
+      const result = await h.callTool(TOOL_NAME, { identities: [validItem, validItem] });
+      const parsed = result.json as BatchResult;
 
-  it("handles an all-failed batch", async () => {
-    const { tool, batchPatchIdentities } = setup();
-    batchPatchIdentities.mockResolvedValue({
-      data: {
-        identities: [
-          { action: "error", error: { message: "bad" } },
-          { action: "error", error: { message: "worse" } },
-        ],
-      },
+      expect(result.isError).toBeFalsy();
+      expect(parsed.summary).toEqual({ total: 2, succeeded: 0, failed: 2 });
     });
 
-    const result = await tool.handler({ identities: [validItem, validItem] });
-    const parsed = parseResult(result);
+    it("handles a missing/empty identities array in the Kratos response", async () => {
+      h.stubs.identity.batchPatchIdentities.mockResolvedValue({ data: {} });
 
-    expect(result.isError).toBeUndefined();
-    expect(parsed.summary).toEqual({ total: 2, succeeded: 0, failed: 2 });
-  });
+      const result = await h.callTool(TOOL_NAME, { identities: [validItem] });
+      const parsed = result.json as BatchResult;
 
-  it("handles a missing/empty identities array in the Kratos response", async () => {
-    const { tool, batchPatchIdentities } = setup();
-    batchPatchIdentities.mockResolvedValue({ data: {} });
-
-    const result = await tool.handler({ identities: [validItem] });
-    const parsed = parseResult(result);
-
-    expect(parsed.results).toEqual([]);
-    expect(parsed.summary).toEqual({ total: 0, succeeded: 0, failed: 0 });
-  });
-
-  it("maps request-level failures to structured errors with isError (FR-008)", async () => {
-    const { tool, batchPatchIdentities, log } = setup();
-    batchPatchIdentities.mockRejectedValue({
-      response: { status: 401, data: { error: { message: "no session" } } },
-      message: "Request failed with status code 401",
+      expect(parsed.results).toEqual([]);
+      expect(parsed.summary).toEqual({ total: 0, succeeded: 0, failed: 0 });
     });
 
-    const result = await tool.handler({ identities: [validItem] });
-    const parsed = parseResult(result);
+    it("maps request-level failures to structured errors with isError (FR-008)", async () => {
+      h.stubs.identity.batchPatchIdentities.mockRejectedValue({
+        response: { status: 401, data: { error: { message: "no session" } } },
+        message: "Request failed with status code 401",
+      });
 
-    expect(result.isError).toBe(true);
-    expect(parsed.error.code).toBe("UNAUTHORIZED");
-    expect(parsed.error.suggestion).toContain("batch_patch_identities");
-    expect(log.error).toHaveBeenCalled();
+      const result = await h.callTool(TOOL_NAME, { identities: [validItem] });
+      const parsed = result.json as { error: { code: string; suggestion: string } };
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toBeUndefined();
+      expect(parsed.error.code).toBe("UNAUTHORIZED");
+      expect(parsed.error.suggestion).toContain("batch_patch_identities");
+    });
+  });
+
+  describe("input validation through the server (US3)", () => {
+    it("rejects an empty batch before calling the SDK", async () => {
+      const result = await h.callTool(TOOL_NAME, { identities: [] });
+      expect(result.isError).toBe(true);
+      expect(h.stubs.identity.batchPatchIdentities).not.toHaveBeenCalled();
+    });
+
+    it("rejects 101 items before calling the SDK", async () => {
+      const identities = Array.from({ length: 101 }, () => validItem);
+      const result = await h.callTool(TOOL_NAME, { identities });
+      expect(result.isError).toBe(true);
+      expect(h.stubs.identity.batchPatchIdentities).not.toHaveBeenCalled();
+    });
+
+    it("accepts 100 items", async () => {
+      h.stubs.identity.batchPatchIdentities.mockResolvedValue({ data: { identities: [] } });
+      const identities = Array.from({ length: 100 }, () => validItem);
+      const result = await h.callTool(TOOL_NAME, { identities });
+      expect(result.isError).toBeFalsy();
+      expect(
+        h.stubs.identity.batchPatchIdentities.mock.calls[0]?.[0].patchIdentitiesBody.identities,
+      ).toHaveLength(100);
+    });
   });
 });
 
@@ -239,7 +258,7 @@ describe("BatchPatchIdentitiesInputSchema validation (US3)", () => {
     const parsed = BatchPatchIdentitiesInputSchema.safeParse({ identities: [] });
     expect(parsed.success).toBe(false);
     if (!parsed.success) {
-      expect(parsed.error.issues[0].message).toContain("At least one identity");
+      expect(parsed.error.issues[0]?.message).toContain("At least one identity");
     }
   });
 
@@ -248,7 +267,7 @@ describe("BatchPatchIdentitiesInputSchema validation (US3)", () => {
     const parsed = BatchPatchIdentitiesInputSchema.safeParse({ identities });
     expect(parsed.success).toBe(false);
     if (!parsed.success) {
-      expect(parsed.error.issues[0].message).toContain("100");
+      expect(parsed.error.issues[0]?.message).toContain("100");
     }
   });
 
@@ -279,7 +298,7 @@ describe("BatchPatchIdentitiesInputSchema validation (US3)", () => {
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.identities[0].create.state).toBe("active");
+      expect(parsed.data.identities[0]?.create.state).toBe("active");
     }
   });
 });

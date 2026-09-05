@@ -5,14 +5,10 @@
  * User Story 2: Run Identity Management Tests (Priority: P1)
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Identity, JsonPatch } from "@ory/kratos-client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getTestContext, type TestContext } from "../setup/context";
-import {
-  createTestIdentityInput,
-  generateTestEmail,
-  patchOperations,
-} from "../setup/fixtures";
+import { createTestIdentityInput, generateTestEmail, patchOperations } from "../setup/fixtures";
 import { generateTraitsFromSchema } from "../setup/schema-generator";
 
 describe("Identity API", () => {
@@ -29,9 +25,7 @@ describe("Identity API", () => {
   afterAll(async () => {
     const result = await ctx.cleanup();
     if (!result.success) {
-      console.warn(
-        `Cleanup had failures. Failed to delete: ${result.failedDeletions.join(", ")}`
-      );
+      console.warn(`Cleanup had failures. Failed to delete: ${result.failedDeletions.join(", ")}`);
     }
     console.log(`Cleaned up ${result.identitiesDeleted} test identities`);
   });
@@ -109,9 +103,7 @@ describe("Identity API", () => {
     it("should return 404 for non-existent identity", async () => {
       const fakeId = "00000000-0000-0000-0000-000000000000";
 
-      await expect(
-        ctx.clients.identity.getIdentity({ id: fakeId })
-      ).rejects.toMatchObject({
+      await expect(ctx.clients.identity.getIdentity({ id: fakeId })).rejects.toMatchObject({
         response: { status: 404 },
       });
     });
@@ -338,9 +330,7 @@ describe("Identity API", () => {
       expect(deleteResponse.status).toBe(204);
 
       // Verify it's gone
-      await expect(
-        ctx.clients.identity.getIdentity({ id: identityId })
-      ).rejects.toMatchObject({
+      await expect(ctx.clients.identity.getIdentity({ id: identityId })).rejects.toMatchObject({
         response: { status: 404 },
       });
     });
@@ -348,9 +338,7 @@ describe("Identity API", () => {
     it("should return 404 for non-existent identity", async () => {
       const fakeId = "00000000-0000-0000-0000-000000000000";
 
-      await expect(
-        ctx.clients.identity.deleteIdentity({ id: fakeId })
-      ).rejects.toMatchObject({
+      await expect(ctx.clients.identity.deleteIdentity({ id: fakeId })).rejects.toMatchObject({
         response: { status: 404 },
       });
     });

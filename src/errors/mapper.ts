@@ -85,7 +85,7 @@ function mapHttpError(error: AxiosLikeError, context?: string): McpToolError | u
   const status = error.response?.status;
   const kratosError = error.response?.data?.error;
 
-  if (!status) {
+  if (!status || status <= 0) {
     return undefined;
   }
 
@@ -164,35 +164,5 @@ export function mapError(error: unknown, context?: string): McpToolError {
  * Type guard for Axios-like error objects
  */
 function isAxiosLikeError(error: unknown): error is AxiosLikeError {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    ("response" in error || "code" in error || "message" in error)
-  );
-}
-
-/**
- * Create a not found error for a specific resource type
- */
-export function notFoundError(
-  resourceType: "identity" | "session" | "message" | "schema",
-  id: string,
-): McpToolError {
-  return {
-    code: `${resourceType.toUpperCase()}_NOT_FOUND`,
-    message: `${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} with ID '${id}' not found`,
-    kratosStatus: 404,
-    suggestion: `Verify the ${resourceType} ID is correct and exists in Kratos`,
-  };
-}
-
-/**
- * Create a validation error
- */
-export function validationError(message: string, field?: string): McpToolError {
-  return {
-    code: "VALIDATION_ERROR",
-    message: field ? `Invalid ${field}: ${message}` : message,
-    suggestion: "Check the input parameters and try again",
-  };
+  return typeof error === "object" && error !== null && ("response" in error || "code" in error);
 }

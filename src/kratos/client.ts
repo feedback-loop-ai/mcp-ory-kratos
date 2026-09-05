@@ -40,10 +40,24 @@ function buildAuthHeaders(config: Config): Record<string, string> {
  * Used for endpoints where the SDK path doesn't match the proxy path
  */
 export interface KratosHttpClient {
-  /** Base URL for direct API calls (e.g., http://localhost:3000/ory/kratos/admin) */
-  baseUrl: string;
   /** Make a GET request to the Kratos API */
   get: <T = unknown>(path: string) => Promise<T>;
+}
+
+/**
+ * Error thrown by the raw HTTP client. Shaped like an Axios error so that
+ * `mapError` produces the same structured result for both client paths.
+ */
+export class KratosHttpError extends Error {
+  readonly response: { status: number; data?: unknown };
+  readonly code?: string;
+
+  constructor(status: number, statusText: string, data?: unknown, code?: string) {
+    super(`HTTP ${status}: ${statusText}`);
+    this.name = "KratosHttpError";
+    this.response = { status, data };
+    this.code = code;
+  }
 }
 
 /**
@@ -82,15 +96,24 @@ export function createKratosClients(config: Config): KratosClients {
 
   // Direct HTTP client for endpoints where SDK paths don't match
   const http: KratosHttpClient = {
-    baseUrl: adminUrl,
     get: async <T = unknown>(path: string): Promise<T> => {
       const url = `${adminUrl}${path.startsWith("/") ? path : `/${path}`}`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers,
-      });
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "GET",
+          headers,
+          signal: AbortSignal.timeout(config.timeoutMs),
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "TimeoutError") {
+          throw new KratosHttpError(0, "timeout", undefined, "ETIMEDOUT");
+        }
+        throw error;
+      }
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const data = await response.json().catch(() => undefined);
+        throw new KratosHttpError(response.status, response.statusText, data);
       }
       return response.json() as Promise<T>;
     },

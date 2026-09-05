@@ -2,24 +2,29 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version change: 1.0.0 → 1.1.0 (Technology stack overhaul + new principle)
+Version change: 1.1.0 → 1.1.1 (PATCH — non-semantic stack-table corrections)
 
-Modified principles:
-- VI. Type Safety & Validation → VII. Type Safety & Validation (renumbered)
-
-Added sections:
-- VI. Fast Feedback Loops (NON-NEGOTIABLE) - new principle
+Modified principles: none
 
 Modified sections:
-- Technology Stack: Node.js → Bun, npm → bun, added Biome
+- Technology Stack: MCP SDK range ^1.25.x → ^1.30.x (still the 1.x line;
+  1.26 closes GHSA-345p-7cg4-v4c7). Lockfile name bun.lockb → bun.lock
+  (Bun ≥ 1.2 text lockfile; the repository has committed bun.lock since
+  feature 003). Testing row: integration tests run against a containerised
+  Kratos in CI (feature 011). Kratos Client row pins ^26.2.x.
+
+Added sections: none
+Removed sections: none
 
 Templates requiring updates:
-- .specify/templates/plan-template.md ✅ (compatible - no stack-specific content)
-- .specify/templates/spec-template.md ✅ (compatible - no stack-specific content)
-- .specify/templates/tasks-template.md ✅ (compatible - no stack-specific content)
-- CLAUDE.md ✅ (updated - Active Technologies now references Bun stack)
+- .specify/templates/plan-template.md ✅ (no stack-specific content)
+- .specify/templates/spec-template.md ✅ (no stack-specific content)
+- .specify/templates/tasks-template.md ✅ (no stack-specific content)
+- CLAUDE.md ✅ (Active Technologies already reflects ^1.30.x / bun.lock)
 
 Follow-up TODOs: None
+Triggered by: specs/011-architecture-hardening/plan.md Constitution Check
+(documented deviation resolved by this amendment).
 ================================================================================
 -->
 
@@ -120,14 +125,14 @@ All code MUST be type-safe with runtime validation at boundaries:
 |---------|--------|-----------|
 | Runtime | Bun 1.x | 4x faster startup, native TypeScript, all-in-one toolchain |
 | Language | TypeScript 5.x (strict mode) | Type safety, MCP SDK compatibility |
-| MCP SDK | @modelcontextprotocol/sdk ^1.25.x | Official MCP implementation |
-| Kratos Client | @ory/kratos-client | Official Ory client |
+| MCP SDK | @modelcontextprotocol/sdk ^1.30.x (1.x line) | Official MCP implementation; ≥1.26 required for GHSA-345p-7cg4-v4c7 |
+| Kratos Client | @ory/kratos-client ^26.2.x | Official Ory client; tracks the latest published Kratos release |
 | Validation | Zod ^3.25.x | Runtime validation, TypeScript inference |
 | Storage | N/A (stateless proxy) | Server maintains no state |
-| Testing | Vitest | Fast, TypeScript-native, Bun-compatible |
+| Testing | Vitest (unit: hermetic in-memory MCP client; integration: containerised Kratos in CI) | Fast, TypeScript-native, Bun-compatible |
 | Linting/Formatting | Biome | 100x faster than ESLint+Prettier, zero config |
 
-**Package Management**: bun (lockfile committed, `bun.lockb`)
+**Package Management**: bun (text lockfile committed, `bun.lock`)
 
 **Why Bun over Node.js**:
 - Native TypeScript execution (no transpilation step)
@@ -191,4 +196,4 @@ This Constitution is the supreme governance document for MCP Ory Kratos. All pra
 - Agent-specific instructions: `.specify/templates/agent-file-template.md`
 - Command definitions: `.claude/commands/` (speckit commands)
 
-**Version**: 1.1.0 | **Ratified**: 2026-01-14 | **Last Amended**: 2026-01-14
+**Version**: 1.1.1 | **Ratified**: 2026-01-14 | **Last Amended**: 2026-09-05

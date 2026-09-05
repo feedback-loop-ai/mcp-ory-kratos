@@ -65,7 +65,7 @@ function parseAuthConfig(): TestAuthConfig {
       if (!key) {
         throw new ConfigurationError(
           `${ENV_VARS.KRATOS_API_KEY} is required when auth type is "api-key"`,
-          `Set ${ENV_VARS.KRATOS_API_KEY} in your .env.test.local file`
+          `Set ${ENV_VARS.KRATOS_API_KEY} in your .env.test.local file`,
         );
       }
       return { type: "api-key", key };
@@ -76,7 +76,7 @@ function parseAuthConfig(): TestAuthConfig {
       if (!headersJson) {
         throw new ConfigurationError(
           `${ENV_VARS.KRATOS_CUSTOM_HEADERS} is required when auth type is "custom-headers"`,
-          `Set ${ENV_VARS.KRATOS_CUSTOM_HEADERS} as JSON in your .env.test.local file`
+          `Set ${ENV_VARS.KRATOS_CUSTOM_HEADERS} as JSON in your .env.test.local file`,
         );
       }
       try {
@@ -85,7 +85,7 @@ function parseAuthConfig(): TestAuthConfig {
       } catch {
         throw new ConfigurationError(
           `${ENV_VARS.KRATOS_CUSTOM_HEADERS} must be valid JSON`,
-          `Example: ${ENV_VARS.KRATOS_CUSTOM_HEADERS}='{"X-Custom-Header": "value"}'`
+          `Example: ${ENV_VARS.KRATOS_CUSTOM_HEADERS}='{"X-Custom-Header": "value"}'`,
         );
       }
     }
@@ -93,7 +93,7 @@ function parseAuthConfig(): TestAuthConfig {
     default:
       throw new ConfigurationError(
         `Invalid auth type: ${authType}`,
-        `Valid options are: none, api-key, custom-headers`
+        `Valid options are: none, api-key, custom-headers`,
       );
   }
 }
@@ -106,7 +106,7 @@ export function loadConfig(): TestConfig {
   if (!kratosAdminUrl) {
     throw new ConfigurationError(
       `${ENV_VARS.KRATOS_ADMIN_URL} is required`,
-      `Set ${ENV_VARS.KRATOS_ADMIN_URL} in your .env.test.local file (e.g., http://localhost:4434)`
+      `Set ${ENV_VARS.KRATOS_ADMIN_URL} in your .env.test.local file (e.g., http://localhost:4434)`,
     );
   }
 
@@ -114,7 +114,7 @@ export function loadConfig(): TestConfig {
   if (!expectedVersion) {
     throw new ConfigurationError(
       `${ENV_VARS.KRATOS_EXPECTED_VERSION} is required`,
-      `Set ${ENV_VARS.KRATOS_EXPECTED_VERSION} in your .env.test.local file (e.g., v1.3.0)`
+      `Set ${ENV_VARS.KRATOS_EXPECTED_VERSION} in your .env.test.local file (e.g., v1.3.0)`,
     );
   }
 
@@ -124,7 +124,7 @@ export function loadConfig(): TestConfig {
   if (timeoutStr && Number.isNaN(timeoutMs)) {
     throw new ConfigurationError(
       `${ENV_VARS.KRATOS_TIMEOUT_MS} must be a valid number`,
-      `Example: ${ENV_VARS.KRATOS_TIMEOUT_MS}=30000`
+      `Example: ${ENV_VARS.KRATOS_TIMEOUT_MS}=30000`,
     );
   }
 
@@ -141,12 +141,10 @@ export function loadConfig(): TestConfig {
 
   const result = TestConfigSchema.safeParse(rawConfig);
   if (!result.success) {
-    const errors = result.error.errors
-      .map((e) => `${e.path.join(".")}: ${e.message}`)
-      .join("; ");
+    const errors = result.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ");
     throw new ConfigurationError(
       `Invalid test configuration: ${errors}`,
-      "Review your .env.test.local file"
+      "Review your .env.test.local file",
     );
   }
 

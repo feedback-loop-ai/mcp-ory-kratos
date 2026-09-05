@@ -12,7 +12,7 @@ export class TestSetupError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly suggestion?: string
+    public readonly suggestion?: string,
   ) {
     super(message);
     this.name = "TestSetupError";
@@ -38,7 +38,7 @@ export class ConnectionError extends TestSetupError {
     super(
       `Cannot connect to Kratos at ${url}`,
       "CONNECTION_ERROR",
-      "Verify the KRATOS_ADMIN_URL is correct and the server is running"
+      "Verify the KRATOS_ADMIN_URL is correct and the server is running",
     );
     this.name = "ConnectionError";
     this.cause = cause;
@@ -54,7 +54,7 @@ export class AuthenticationError extends TestSetupError {
     super(
       `Authentication failed with status ${statusCode}`,
       "AUTHENTICATION_ERROR",
-      "Verify your authentication credentials (KRATOS_AUTH_TYPE, KRATOS_API_KEY, or KRATOS_CUSTOM_HEADERS)"
+      "Verify your authentication credentials (KRATOS_AUTH_TYPE, KRATOS_API_KEY, or KRATOS_CUSTOM_HEADERS)",
     );
     this.name = "AuthenticationError";
   }
@@ -67,12 +67,12 @@ export class AuthenticationError extends TestSetupError {
 export class VersionMismatchError extends TestSetupError {
   constructor(
     public readonly expected: string,
-    public readonly actual: string
+    public readonly actual: string,
   ) {
     super(
       `Kratos version mismatch: expected ${expected}, got ${actual}`,
       "VERSION_MISMATCH",
-      "Update KRATOS_EXPECTED_VERSION or use a compatible Kratos instance"
+      "Update KRATOS_EXPECTED_VERSION or use a compatible Kratos instance",
     );
     this.name = "VersionMismatchError";
   }
@@ -85,9 +85,5 @@ export function isAxiosError(error: unknown): error is {
   response?: { status: number; data?: unknown };
   code?: string;
 } {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    ("response" in error || "code" in error)
-  );
+  return typeof error === "object" && error !== null && ("response" in error || "code" in error);
 }

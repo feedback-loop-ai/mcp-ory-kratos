@@ -54,7 +54,9 @@ interface JsonSchema {
  * Generate a unique random string
  */
 function generateRandomString(length = 6): string {
-  return Math.random().toString(36).substring(2, 2 + length);
+  return Math.random()
+    .toString(36)
+    .substring(2, 2 + length);
 }
 
 /**
@@ -102,10 +104,7 @@ function generateTestUuid(): string {
 /**
  * Generate a value for a JSON Schema property based on its definition
  */
-function generateValueForProperty(
-  name: string,
-  propSchema: JsonSchemaProperty
-): unknown {
+function generateValueForProperty(name: string, propSchema: JsonSchemaProperty): unknown {
   const { type, format, enum: enumValues, properties, items } = propSchema;
 
   // Handle enum - pick first value
@@ -167,10 +166,7 @@ function generateValueForProperty(
 /**
  * Generate a string value based on format or name hints
  */
-function generateStringValue(
-  name: string,
-  propSchema: JsonSchemaProperty
-): string {
+function generateStringValue(name: string, propSchema: JsonSchemaProperty): string {
   const { format, minLength = 1, maxLength = 100 } = propSchema;
   const nameLower = name.toLowerCase();
 
@@ -244,7 +240,7 @@ function generateNumberValue(propSchema: JsonSchemaProperty): number {
  */
 function generateObjectValue(
   properties: Record<string, JsonSchemaProperty>,
-  required: string[]
+  required: string[],
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
@@ -270,7 +266,7 @@ function generateObjectValue(
  * Extract the traits schema from a full identity schema
  */
 function extractTraitsSchema(
-  schema: JsonSchema
+  schema: JsonSchema,
 ): { properties: Record<string, JsonSchemaProperty>; required: string[] } | null {
   const traitsSchema = schema.properties?.traits;
   if (!traitsSchema?.properties) {
@@ -289,16 +285,12 @@ function extractTraitsSchema(
  * @param schema - The identity JSON Schema (full schema, not just traits)
  * @returns Generated traits object that conforms to the schema
  */
-export function generateTraitsFromSchema(
-  schema: JsonSchema
-): Record<string, unknown> {
+export function generateTraitsFromSchema(schema: JsonSchema): Record<string, unknown> {
   const traitsSchema = extractTraitsSchema(schema);
 
   if (!traitsSchema) {
     // If we can't parse the schema, return minimal traits
-    console.warn(
-      "Could not extract traits schema, returning minimal test traits"
-    );
+    console.warn("Could not extract traits schema, returning minimal test traits");
     return {
       email: generateTestEmail(),
     };
@@ -322,10 +314,7 @@ export function generateUniqueId(prefix = "test"): string {
 /**
  * Check if a schema has a specific property in traits
  */
-export function schemaHasProperty(
-  schema: JsonSchema,
-  propertyName: string
-): boolean {
+export function schemaHasProperty(schema: JsonSchema, propertyName: string): boolean {
   const traitsSchema = extractTraitsSchema(schema);
   return traitsSchema?.properties?.[propertyName] !== undefined;
 }

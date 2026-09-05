@@ -1,8 +1,8 @@
 # mcp-ory-kratos
 
-![CI](https://github.com/feedback-loop-ai/mcp-ory-kratos/actions/workflows/ci.yml/badge.svg?branch=001-kratos-mcp-server)
+![CI](https://github.com/feedback-loop-ai/mcp-ory-kratos/actions/workflows/ci.yml/badge.svg?branch=main)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MCP](https://img.shields.io/badge/MCP-1.25+-blue.svg)](https://modelcontextprotocol.io/)
+[![MCP](https://img.shields.io/badge/MCP-1.30+-blue.svg)](https://modelcontextprotocol.io/)
 
 MCP server enabling AI assistants to manage Ory Kratos identities, sessions, and authentication flows. Built for developers integrating identity management into Claude Code, GitHub Copilot, or Gemini CLI workflows.
 
@@ -23,7 +23,13 @@ MCP server enabling AI assistants to manage Ory Kratos identities, sessions, and
   - [Recovery Tools](#recovery-tools)
   - [Analytics Tools](#analytics-tools)
   - [Health Tools](#health-tools)
+- [Behaviour](#behaviour)
+  - [Pagination](#pagination)
+  - [Credential Redaction](#credential-redaction)
+  - [Destructive Tools and Confirmation](#destructive-tools-and-confirmation)
+  - [Resources](#resources)
 - [Usage Examples](#usage-examples)
+- [Breaking changes in 0.3.0](#breaking-changes-in-030)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -32,8 +38,8 @@ MCP server enabling AI assistants to manage Ory Kratos identities, sessions, and
 
 ## Prerequisites
 
-- **Ory Kratos** instance running with Admin API access
-- **Node.js 18+** or **Bun 1.x** installed
+- **Ory Kratos** instance running with Admin API access (developed and tested against **v26.2.0**; the integration suite pins that version)
+- **Node.js 20+** or **Bun 1.x** installed
 - One of the supported MCP clients:
   - **Claude Code** 1.0+
   - **VS Code** 1.99+ with GitHub Copilot (GA in 1.102+)
@@ -67,7 +73,16 @@ bun add -g mcp-ory-kratos
 | `KRATOS_API_KEY` | Conditional | - | Required when `KRATOS_AUTH_TYPE=api-key` |
 | `KRATOS_CUSTOM_HEADERS` | Conditional | - | JSON object of headers when `KRATOS_AUTH_TYPE=custom-headers` |
 | `KRATOS_TIMEOUT_MS` | No | `30000` | Request timeout in milliseconds |
+| `KRATOS_TOOLSETS` | No | `all` | Comma-separated toolsets to expose: `identities`, `sessions`, `courier`, `recovery`, `health`, `analytics` (or `all`) |
+| `KRATOS_READ_ONLY` | No | `false` | `1`/`true` hides every tool that is not read-only |
+| `KRATOS_CONFIRM_DESTRUCTIVE` | No | `true` | `0`/`false` disables the elicitation prompt before destructive tools run |
+| `KRATOS_ALLOW_CREDENTIAL_EXPOSURE` | No | `false` | `1`/`true` returns raw credential config (password hashes, OIDC tokens, TOTP secrets) instead of redacting it |
+| `KRATOS_MAX_SCAN_PAGES` | No | `20` | Default page cap (1-1000) for tools that scan many pages (analytics, filtered session listing) |
 | `LOG_LEVEL` | No | `info` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
+
+Boolean variables accept `1`, `true`, `yes`, `on` (case-insensitive); anything else is `false`.
+
+> **Admin URL**: The Kratos SDK appends `/admin/...` to the base URL itself. Trailing slashes are stripped, and if `KRATOS_ADMIN_URL` already ends in `/admin` (common behind a reverse proxy, e.g. `https://ory.example.com/kratos/admin`) that suffix is removed for SDK calls so paths do not become `/admin/admin/...`. Both `http://localhost:4434` and `http://localhost:4434/admin` work.
 
 > **Note**: This MCP server can run alongside other MCP servers in your configuration. Each server operates independently.
 
@@ -209,59 +224,106 @@ The MCP server will execute `kratos_list_identities` and return the results.
 
 ## Tool Reference
 
+27 tools, grouped by toolset (enable/disable groups with `KRATOS_TOOLSETS`). **Kind** is the MCP annotation: read-only tools survive `KRATOS_READ_ONLY=1`; destructive tools change or remove data and trigger a confirmation prompt (see [Behaviour](#behaviour)).
+
 ### Identity Tools
 
-| Tool | Description |
-|------|-------------|
-| `kratos_list_identities` | List identities with optional filtering by credential identifier (e.g., email) |
-| `kratos_get_identity` | Get detailed information about a specific identity by ID |
-| `kratos_get_identity_by_external_id` | Look up identity by external identifier |
-| `kratos_create_identity` | Create a new identity with schema, traits, and optional metadata |
-| `kratos_batch_patch_identities` | Bulk-create up to 100 identities in one non-atomic request, with per-item results and a summary |
-| `kratos_update_identity` | Full update of an identity (replaces all fields) |
-| `kratos_patch_identity` | Partial update using JSON Patch operations |
-| `kratos_delete_identity` | Permanently delete an identity and all associated data |
-| `kratos_delete_identity_credential` | Delete a specific credential type from an identity |
+Toolset: `identities`
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `kratos_list_identities` | read-only | List identities; filter by credential identifier (exact or fuzzy), IDs, organization; optional `includeCredential` |
+| `kratos_get_identity` | read-only | Get an identity by ID; `includeCredential` (array of types) expands credentials (`includeCredentials: true` is deprecated) |
+| `kratos_get_identity_by_external_id` | read-only | Look up an identity by `external_id` |
+| `kratos_list_identity_schemas` | read-only | List identity JSON schemas (paginated) |
+| `kratos_get_identity_schema` | read-only | Get one identity JSON schema by ID |
+| `kratos_create_identity` | create | Create an identity with schema, traits, metadata, credentials and addresses |
+| `kratos_batch_patch_identities` | create | Bulk-create up to 100 identities in one non-atomic request, with per-item results and a summary |
+| `kratos_update_identity` | destructive | Full update of an identity (replaces all fields) |
+| `kratos_patch_identity` | destructive | Partial update using JSON Patch operations |
+| `kratos_set_identity_state` | destructive | Activate or suspend an identity; optionally revoke all its sessions |
+| `kratos_delete_identity` | destructive | Permanently delete an identity and all associated data |
+| `kratos_delete_identity_credential` | destructive | Delete a credential type; `identifier` (`<provider>:<subject>`) unlinks a single oidc/saml provider |
 
 ### Session Tools
 
-| Tool | Description |
-|------|-------------|
-| `kratos_list_sessions` | List all sessions with optional filtering by active status |
-| `kratos_get_session` | Get session details by ID |
-| `kratos_list_identity_sessions` | List all sessions for a specific identity |
-| `kratos_disable_session` | Revoke/disable a session (log user out) |
-| `kratos_extend_session` | Extend session expiration time |
-| `kratos_delete_identity_sessions` | Delete all sessions for an identity |
+Toolset: `sessions`
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `kratos_list_sessions` | read-only | List sessions (`pageSize`/`pageToken`); `filter` (auth method, provider, time range) scans up to `maxPages` pages client-side |
+| `kratos_get_session` | read-only | Get session details by ID |
+| `kratos_list_identity_sessions` | read-only | List sessions for one identity |
+| `kratos_disable_session` | destructive | Revoke/disable a session (log user out) |
+| `kratos_extend_session` | destructive | Extend session expiration time |
+| `kratos_delete_identity_sessions` | destructive | Delete all sessions for an identity |
 
 ### Courier Tools
 
-| Tool | Description |
-|------|-------------|
-| `kratos_list_courier_messages` | List emails/SMS sent by Kratos with delivery status |
-| `kratos_get_courier_message` | Get courier message details including delivery attempts |
+Toolset: `courier`
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `kratos_list_courier_messages` | read-only | List emails/SMS sent by Kratos with delivery status |
+| `kratos_get_courier_message` | read-only | Get courier message details including delivery attempts |
 
 ### Recovery Tools
 
-| Tool | Description |
-|------|-------------|
-| `kratos_create_recovery_link` | Generate account recovery link for a user |
-| `kratos_create_recovery_code` | Generate account recovery code for a user |
+Toolset: `recovery`
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `kratos_create_recovery_link` | create | Generate an account recovery link (`expiresIn` Go duration, `returnTo` URL) |
+| `kratos_create_recovery_code` | create | Generate an account recovery code (`expiresIn` Go duration, `flowType` browser/api) |
+
+> Recovery links and codes are equivalent to full account takeover. Treat them as secrets.
 
 ### Analytics Tools
 
-| Tool | Description |
-|------|-------------|
-| `kratos_session_analytics` | Aggregated session statistics (auth methods, devices, browsers) |
-| `kratos_credential_analytics` | Authentication method adoption statistics and MFA rates |
+Toolset: `analytics`
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `kratos_session_analytics` | read-only | Aggregated session statistics (auth methods, assurance levels, devices, browsers) |
+| `kratos_credential_analytics` | read-only | Credential type distribution, MFA and passwordless (passkey) adoption |
+
+Both scan up to `maxPages` pages and report `pagesScanned` / `truncated`.
 
 ### Health Tools
 
-| Tool | Description |
-|------|-------------|
-| `kratos_health_alive` | Check if Kratos server is alive and accepting requests |
-| `kratos_health_ready` | Check if Kratos is ready (database connectivity, dependencies) |
-| `kratos_version` | Get Kratos server version |
+Toolset: `health`
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `kratos_health_alive` | read-only | Check if Kratos is alive and accepting requests |
+| `kratos_health_ready` | read-only | Check if Kratos is ready (database connectivity, dependencies) |
+| `kratos_version` | read-only | Get the Kratos server version |
+
+## Behaviour
+
+Every tool declares an `outputSchema` and returns its result as `structuredContent` alongside the JSON text; errors come back as `isError` results with `{ code, message, kratosStatus?, suggestion? }`.
+
+### Pagination
+
+List tools take `pageSize` (1-100, default 20) and `pageToken`, and return `{ items, count, nextPageToken }`. `nextPageToken` is absent on the last page; pass it back as `pageToken` to continue. Tokens are opaque cursors bound to the Kratos instance.
+
+Tools that walk many pages (analytics, `kratos_list_sessions` with `filter`) accept `maxPages` (default `KRATOS_MAX_SCAN_PAGES`) and return `pagesScanned` and `truncated`. When `truncated` is true the page cap was hit; raise `maxPages` or pass the returned `nextPageToken` back as `pageToken` to resume from the first unscanned page (both analytics tools accept `pageToken`; an analytics aggregate then covers only the resumed range).
+
+### Credential Redaction
+
+When `includeCredential` is requested, the `config` of secret-bearing credential types (`password`, `oidc`, `saml`, `totp`, `lookup_secret`, `webauthn`, `passkey`) is replaced with `"[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]"`. Type, identifiers, version and timestamps are kept so an agent can still see what is linked. Set `KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1` to return the raw config.
+
+### Destructive Tools and Confirmation
+
+Tools annotated `destructiveHint` (delete, disable, update, patch, set state) ask the client to confirm via [MCP elicitation](https://modelcontextprotocol.io/) before doing anything. If the user declines, the tool returns `{ cancelled: true }` and nothing is changed. Clients without elicitation support skip the prompt (the annotation still lets them warn on their own). Disable the prompt with `KRATOS_CONFIRM_DESTRUCTIVE=0`, or hide destructive tools entirely with `KRATOS_READ_ONLY=1`.
+
+### Resources
+
+| URI | Description |
+|-----|-------------|
+| `kratos://schemas` | All identity schemas (`{ schemas: [{ id, schema }] }`) |
+| `kratos://schemas/{schema_id}` | One identity JSON schema; listed and completable per schema ID |
+| `kratos://config/connection` | Non-sensitive connection info: base URL (credentials stripped), auth type, timeout, enabled toolsets, read-only flag, reachability and Kratos version |
 
 ## Usage Examples
 
@@ -300,6 +362,21 @@ What authentication methods are users using? Show session analytics.
 ```
 Create a recovery link for user with ID abc-123
 ```
+
+## Breaking changes in 0.3.0
+
+0.3.0 is a minor bump (the package is pre-1.0) that changes several contracts. Update clients and scripts as follows:
+
+| Contract | 0.2.0 | 0.3.0 | Migration |
+|---|---|---|---|
+| `kratos_list_sessions` input | `limit` | `pageSize` (1-100, default 20) + `pageToken`; `maxPages` when `filter` is set | Rename `limit` to `pageSize`; there is no alias. Pass `nextPageToken` back as `pageToken` to continue |
+| `kratos_get_identity` credentials | `includeCredentials: true` returned raw credential `config` | `includeCredential: ["password", "oidc", ...]` is canonical; the boolean is accepted as a deprecated "all types" alias (removed no earlier than 1.0.0). The `config` of secret-bearing types is redacted to `"[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]"` by default | Switch to `includeCredential`; set `KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1` only where the client context may hold secrets |
+| `kratos_batch_patch_identities` result | `{ results: [{ index, identityId, ... }], summary }` | `{ results: [{ action: "create" \| "error" \| "unknown", identity?, patchId?, error? }], summary: { total, succeeded, failed } }` (Kratos SDK field names) | Read `identity.id` instead of `identityId`; correlate by `patchId`; `summary.total` is new |
+| Destructive tools (update, patch, set state, extend/disable session, delete identity/credential/sessions) | always returned their result | may return `{ cancelled: true, message: "Cancelled by user" }` as a *success* result when the operator declines the confirmation prompt; no Kratos call is made | Check `cancelled` before reading the payload; do not retry on it |
+| Server version over MCP | hard-coded `0.1.0` | equals the `package.json` version (`0.3.0`) | Clients that pinned `0.1.0` in checks should compare against the package version |
+| Runtime | Node >= 18 | Node >= 20 | Upgrade Node |
+
+Additive changes (no action needed): every tool now carries a title, MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint: false`), an output schema and `structuredContent`; list tools return `{ items, count, nextPageToken? }`; `kratos_delete_identity_sessions` returns `sessionsExisted`, `kratos_set_identity_state` returns `sessionsRevoked`; new env vars `KRATOS_TOOLSETS`, `KRATOS_READ_ONLY`, `KRATOS_CONFIRM_DESTRUCTIVE`, `KRATOS_ALLOW_CREDENTIAL_EXPOSURE`, `KRATOS_MAX_SCAN_PAGES` are all optional.
 
 ## Troubleshooting
 
@@ -363,18 +440,32 @@ bun run start
 bun run lint
 bun run lint:fix  # Auto-fix issues
 
-# Type check
-bun x tsc --noEmit
+# Type check (src + tests)
+bun run typecheck
 
-# Run unit tests
-bun x vitest run --config tests/vitest.config.ts --dir tests/unit
+# Unit tests (hermetic, with coverage) - this is what CI runs
+bun run test:unit
 
-# Run all tests (requires Kratos - see .env.test.local.example)
-bun run test
+# Dependency audit (high severity and above)
+bun run audit
 
-# Run tests with coverage
-bun run test -- --coverage.enabled
+# Build the distributable
+bun run build
 ```
+
+### Integration Tests
+
+The integration suite in `tests/api/` runs against a real Kratos (pinned to v26.2.0, configured from `tests/kratos/`). Start one with Docker and run the suite:
+
+```bash
+docker compose up -d --wait
+bun run test:api
+docker compose down
+```
+
+To target another instance, copy `.env.test.local.example` to `.env.test.local` and set `KRATOS_ADMIN_URL` / `KRATOS_EXPECTED_VERSION` (the suite fails fast on a version mismatch). Override the container version with `KRATOS_VERSION=v26.x.y docker compose up -d`.
+
+CI runs lint, type check, audit and unit tests on every push and PR, plus the integration job against the docker-compose Kratos.
 
 ## Contributing
 
@@ -383,7 +474,7 @@ Contributions are welcome! Please follow these steps:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes
-4. Run lint and tests (`bun run lint && bun run test`)
+4. Run lint, type check and tests (`bun run lint && bun run typecheck && bun run test:unit`)
 5. Commit your changes (`git commit -m 'Add my feature'`)
 6. Push to your branch (`git push origin feature/my-feature`)
 7. Open a Pull Request

@@ -5,8 +5,8 @@
  * User Story 4: Run Recovery Flow Tests (Priority: P2)
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Identity } from "@ory/kratos-client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getTestContext, type TestContext } from "../setup/context";
 import { createTestIdentityInput } from "../setup/fixtures";
 
@@ -37,22 +37,18 @@ describe("Recovery API", () => {
   afterAll(async () => {
     const result = await ctx.cleanup();
     if (!result.success) {
-      console.warn(
-        `Cleanup had failures. Failed to delete: ${result.failedDeletions.join(", ")}`
-      );
+      console.warn(`Cleanup had failures. Failed to delete: ${result.failedDeletions.join(", ")}`);
     }
     console.log(`Cleaned up ${result.identitiesDeleted} test identities`);
   });
 
   describe("Create Recovery Link", () => {
     it("should generate valid link for existing identity", async () => {
-      const response = await ctx.clients.identity.createRecoveryLinkForIdentity(
-        {
-          createRecoveryLinkForIdentityBody: {
-            identity_id: testIdentity.id,
-          },
-        }
-      );
+      const response = await ctx.clients.identity.createRecoveryLinkForIdentity({
+        createRecoveryLinkForIdentityBody: {
+          identity_id: testIdentity.id,
+        },
+      });
 
       expect(response.status).toBe(200);
       expect(response.data).toHaveProperty("recovery_link");
@@ -61,14 +57,12 @@ describe("Recovery API", () => {
     });
 
     it("should accept custom expiry duration", async () => {
-      const response = await ctx.clients.identity.createRecoveryLinkForIdentity(
-        {
-          createRecoveryLinkForIdentityBody: {
-            identity_id: testIdentity.id,
-            expires_in: "1h",
-          },
-        }
-      );
+      const response = await ctx.clients.identity.createRecoveryLinkForIdentity({
+        createRecoveryLinkForIdentityBody: {
+          identity_id: testIdentity.id,
+          expires_in: "1h",
+        },
+      });
 
       expect(response.status).toBe(200);
       expect(response.data).toHaveProperty("recovery_link");
@@ -93,7 +87,7 @@ describe("Recovery API", () => {
           createRecoveryLinkForIdentityBody: {
             identity_id: fakeIdentityId,
           },
-        })
+        }),
       ).rejects.toMatchObject({
         // Kratos returns 400 (bad request) for non-existent identity
         response: { status: 400 },
@@ -101,35 +95,29 @@ describe("Recovery API", () => {
     });
 
     it("should generate unique links for multiple requests", async () => {
-      const response1 =
-        await ctx.clients.identity.createRecoveryLinkForIdentity({
-          createRecoveryLinkForIdentityBody: {
-            identity_id: testIdentity.id,
-          },
-        });
+      const response1 = await ctx.clients.identity.createRecoveryLinkForIdentity({
+        createRecoveryLinkForIdentityBody: {
+          identity_id: testIdentity.id,
+        },
+      });
 
-      const response2 =
-        await ctx.clients.identity.createRecoveryLinkForIdentity({
-          createRecoveryLinkForIdentityBody: {
-            identity_id: testIdentity.id,
-          },
-        });
+      const response2 = await ctx.clients.identity.createRecoveryLinkForIdentity({
+        createRecoveryLinkForIdentityBody: {
+          identity_id: testIdentity.id,
+        },
+      });
 
-      expect(response1.data.recovery_link).not.toBe(
-        response2.data.recovery_link
-      );
+      expect(response1.data.recovery_link).not.toBe(response2.data.recovery_link);
     });
   });
 
   describe("Create Recovery Code", () => {
     it("should generate valid code for existing identity", async () => {
-      const response = await ctx.clients.identity.createRecoveryCodeForIdentity(
-        {
-          createRecoveryCodeForIdentityBody: {
-            identity_id: testIdentity.id,
-          },
-        }
-      );
+      const response = await ctx.clients.identity.createRecoveryCodeForIdentity({
+        createRecoveryCodeForIdentityBody: {
+          identity_id: testIdentity.id,
+        },
+      });
 
       expect(response.status).toBe(201);
       expect(response.data).toHaveProperty("recovery_code");
@@ -139,14 +127,12 @@ describe("Recovery API", () => {
     });
 
     it("should accept custom expiry duration", async () => {
-      const response = await ctx.clients.identity.createRecoveryCodeForIdentity(
-        {
-          createRecoveryCodeForIdentityBody: {
-            identity_id: testIdentity.id,
-            expires_in: "30m",
-          },
-        }
-      );
+      const response = await ctx.clients.identity.createRecoveryCodeForIdentity({
+        createRecoveryCodeForIdentityBody: {
+          identity_id: testIdentity.id,
+          expires_in: "30m",
+        },
+      });
 
       expect(response.status).toBe(201);
       expect(response.data).toHaveProperty("recovery_code");
@@ -171,30 +157,26 @@ describe("Recovery API", () => {
           createRecoveryCodeForIdentityBody: {
             identity_id: fakeIdentityId,
           },
-        })
+        }),
       ).rejects.toMatchObject({
         response: { status: 404 },
       });
     });
 
     it("should generate unique codes for multiple requests", async () => {
-      const response1 =
-        await ctx.clients.identity.createRecoveryCodeForIdentity({
-          createRecoveryCodeForIdentityBody: {
-            identity_id: testIdentity.id,
-          },
-        });
+      const response1 = await ctx.clients.identity.createRecoveryCodeForIdentity({
+        createRecoveryCodeForIdentityBody: {
+          identity_id: testIdentity.id,
+        },
+      });
 
-      const response2 =
-        await ctx.clients.identity.createRecoveryCodeForIdentity({
-          createRecoveryCodeForIdentityBody: {
-            identity_id: testIdentity.id,
-          },
-        });
+      const response2 = await ctx.clients.identity.createRecoveryCodeForIdentity({
+        createRecoveryCodeForIdentityBody: {
+          identity_id: testIdentity.id,
+        },
+      });
 
-      expect(response1.data.recovery_code).not.toBe(
-        response2.data.recovery_code
-      );
+      expect(response1.data.recovery_code).not.toBe(response2.data.recovery_code);
     });
   });
 });

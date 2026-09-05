@@ -20,6 +20,17 @@ const AuthConfigSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const TOOLSETS = [
+  "identities",
+  "sessions",
+  "courier",
+  "recovery",
+  "health",
+  "analytics",
+] as const;
+export const ToolsetSchema = z.enum(TOOLSETS);
+export type Toolset = z.infer<typeof ToolsetSchema>;
+
 /**
  * Complete configuration schema
  */
@@ -40,68 +51,115 @@ const ConfigSchema = z.object({
     .max(300000)
     .default(30000)
     .describe("Request timeout in milliseconds"),
+  toolsets: z
+    .array(ToolsetSchema)
+    .default([...TOOLSETS])
+    .describe("Enabled toolsets (KRATOS_TOOLSETS, comma-separated or 'all')"),
+  readOnly: z.boolean().default(false).describe("Expose only read-only tools (KRATOS_READ_ONLY=1)"),
+  confirmDestructive: z
+    .boolean()
+    .default(true)
+    .describe(
+      "Ask the client to confirm destructive tools via elicitation (KRATOS_CONFIRM_DESTRUCTIVE=0 to disable)",
+    ),
+  allowCredentialExposure: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Allow tools to return raw credential config (password hashes, OIDC tokens, TOTP secrets). Off by default; KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1 to enable",
+    ),
+  maxScanPages: z
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .default(20)
+    .describe("Default page cap for tools that scan across many pages (KRATOS_MAX_SCAN_PAGES)"),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 
-/**
- * Load and validate configuration from environment variables
- * @throws {z.ZodError} If configuration is invalid
- */
-export function loadConfig(): Config {
-  const kratosAdminUrl = process.env.KRATOS_ADMIN_URL;
-  if (!kratosAdminUrl) {
-    throw new Error("KRATOS_ADMIN_URL environment variable is required");
+const BOOL_TRUE = new Set(["1", "true", "yes", "on"]);
+
+function parseBool(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value === "") return fallback;
+  return BOOL_TRUE.has(value.trim().toLowerCase());
+}
+
+function parseToolsets(value: string | undefined): Toolset[] {
+  if (!value || value.trim() === "" || value.trim().toLowerCase() === "all") {
+    return [...TOOLSETS];
   }
+  const parsed = z.array(ToolsetSchema).safeParse(
+    value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  if (!parsed.success) {
+    throw new Error(`Invalid KRATOS_TOOLSETS: ${value}. Valid values: ${TOOLSETS.join(", ")}, all`);
+  }
+  return parsed.data;
+}
 
-  const authType = process.env.KRATOS_AUTH_TYPE ?? "none";
-  let auth: AuthConfig;
-
+function parseAuth(env: NodeJS.ProcessEnv): AuthConfig {
+  const authType = env.KRATOS_AUTH_TYPE ?? "none";
   switch (authType) {
     case "none":
-      auth = { type: "none" };
-      break;
+      return { type: "none" };
     case "api-key": {
-      const key = process.env.KRATOS_API_KEY;
+      const key = env.KRATOS_API_KEY;
       if (!key) {
         throw new Error("KRATOS_API_KEY is required when KRATOS_AUTH_TYPE is api-key");
       }
-      auth = { type: "api-key", key };
-      break;
+      return { type: "api-key", key };
     }
     case "custom-headers": {
-      const headersJson = process.env.KRATOS_CUSTOM_HEADERS;
+      const headersJson = env.KRATOS_CUSTOM_HEADERS;
       if (!headersJson) {
         throw new Error(
           "KRATOS_CUSTOM_HEADERS is required when KRATOS_AUTH_TYPE is custom-headers",
         );
       }
+      let raw: unknown;
       try {
-        const headers = JSON.parse(headersJson) as Record<string, string>;
-        auth = { type: "custom-headers", headers };
+        raw = JSON.parse(headersJson);
       } catch {
         throw new Error("KRATOS_CUSTOM_HEADERS must be valid JSON");
       }
-      break;
+      const headers = z.record(z.string()).safeParse(raw);
+      if (!headers.success) {
+        throw new Error("KRATOS_CUSTOM_HEADERS must be a JSON object of string values");
+      }
+      return { type: "custom-headers", headers: headers.data };
     }
     default:
       throw new Error(
         `Invalid KRATOS_AUTH_TYPE: ${authType}. Must be none, api-key, or custom-headers`,
       );
   }
+}
 
-  const logLevel = process.env.LOG_LEVEL ?? "info";
-  const timeoutMs = process.env.KRATOS_TIMEOUT_MS
-    ? Number.parseInt(process.env.KRATOS_TIMEOUT_MS, 10)
-    : 30000;
+/**
+ * Load and validate configuration from environment variables
+ * @throws {Error|z.ZodError} If configuration is invalid
+ */
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const kratosAdminUrl = env.KRATOS_ADMIN_URL;
+  if (!kratosAdminUrl) {
+    throw new Error("KRATOS_ADMIN_URL environment variable is required");
+  }
 
-  const config = ConfigSchema.parse({
+  return ConfigSchema.parse({
     kratosAdminUrl,
-    auth,
-    logLevel,
-    timeoutMs,
+    auth: parseAuth(env),
+    logLevel: env.LOG_LEVEL ?? "info",
+    timeoutMs: env.KRATOS_TIMEOUT_MS ? Number(env.KRATOS_TIMEOUT_MS) : undefined,
+    toolsets: parseToolsets(env.KRATOS_TOOLSETS),
+    readOnly: parseBool(env.KRATOS_READ_ONLY, false),
+    confirmDestructive: parseBool(env.KRATOS_CONFIRM_DESTRUCTIVE, true),
+    allowCredentialExposure: parseBool(env.KRATOS_ALLOW_CREDENTIAL_EXPOSURE, false),
+    maxScanPages: env.KRATOS_MAX_SCAN_PAGES ? Number(env.KRATOS_MAX_SCAN_PAGES) : undefined,
   });
-
-  return config;
 }

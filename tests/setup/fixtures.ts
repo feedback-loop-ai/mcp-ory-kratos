@@ -5,11 +5,7 @@
  * Dynamically generates valid traits based on JSON Schema definitions.
  */
 
-import {
-  generateTraitsFromSchema,
-  generateTestEmail,
-  generateUniqueId,
-} from "./schema-generator";
+import { generateTestEmail, generateTraitsFromSchema, generateUniqueId } from "./schema-generator";
 
 /**
  * Input for creating a test identity
@@ -53,7 +49,7 @@ export interface PatchOperation {
 export function createTestIdentityInput(
   schema: object,
   schemaId: string,
-  overrides: Partial<CreateIdentityInput> = {}
+  overrides: Partial<CreateIdentityInput> = {},
 ): CreateIdentityInput {
   // Generate traits from schema
   const baseTraits = generateTraitsFromSchema(schema);
@@ -82,7 +78,7 @@ export function createUpdateIdentityInput(
   id: string,
   schema: object,
   schemaId: string,
-  updates: Partial<Omit<UpdateIdentityInput, "id" | "schemaId">> = {}
+  updates: Partial<Omit<UpdateIdentityInput, "id" | "schemaId">> = {},
 ): UpdateIdentityInput {
   // Generate fresh traits from schema for the update
   const baseTraits = generateTraitsFromSchema(schema);

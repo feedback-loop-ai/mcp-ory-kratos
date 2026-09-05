@@ -1,43 +1,15 @@
 /**
- * Re-exported types from @ory/kratos-client
- *
- * This module provides convenient access to Kratos API types
+ * Kratos type helpers
  * @module kratos/types
  */
 
-export type {
-  AuthenticatorAssuranceLevel,
-  CreateIdentityBody,
-  HealthStatus,
-  Identity,
-  IdentityCredentials,
-  IdentityCredentialsOidc,
-  IdentityCredentialsPassword,
-  IdentitySchemaContainer,
-  JsonPatch,
-  Message,
-  MessageDispatch,
-  RecoveryCodeForIdentity,
-  RecoveryIdentityAddress,
-  RecoveryLinkForIdentity,
-  Session,
-  SessionDevice,
-  UpdateIdentityBody,
-  VerifiableIdentityAddress,
-  Version,
-} from "@ory/kratos-client";
+import type { DeleteIdentityCredentialsTypeEnum } from "@ory/kratos-client";
+
+export type { Identity, Session } from "@ory/kratos-client";
 
 /**
- * Identity state enum values
- */
-export type IdentityState = "active" | "inactive";
-
-/**
- * Credential types supported by this server (single source of truth).
- *
- * A deliberate subset of the SDK's DeleteIdentityCredentialsTypeEnum /
- * GetIdentityIncludeCredentialEnum limited to account login credentials
- * (excludes profile, saml, link_recovery, code_recovery).
+ * Login credential types (used by credential analytics as the default scan set).
+ * Excludes recovery and profile pseudo-credentials.
  */
 export const CREDENTIAL_TYPES = [
   "password",
@@ -47,19 +19,55 @@ export const CREDENTIAL_TYPES = [
   "lookup_secret",
   "passkey",
   "code",
-] as const;
+] as const satisfies readonly DeleteIdentityCredentialsTypeEnum[];
 
 /**
- * Credential types supported by Kratos
+ * Every credential type Kratos v26.2 accepts for include/delete operations.
  */
+export const ALL_CREDENTIAL_TYPES = [
+  ...CREDENTIAL_TYPES,
+  "profile",
+  "saml",
+  "link_recovery",
+  "code_recovery",
+] as const satisfies readonly DeleteIdentityCredentialsTypeEnum[];
+
 export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 
-/**
- * Message status values
- */
-export type MessageStatus = "queued" | "sent" | "processing" | "abandoned" | "failed";
+/** Credential types whose `config` carries secret material and is redacted by default */
+export const SENSITIVE_CREDENTIAL_TYPES: ReadonlySet<string> = new Set([
+  "password",
+  "oidc",
+  "saml",
+  "totp",
+  "lookup_secret",
+  "webauthn",
+  "passkey",
+]);
 
 /**
- * Authenticator Assurance Levels
+ * Redact secret-bearing credential config from an identity unless exposure is allowed.
+ * Keeps identifiers/type/version/timestamps so agents can still see what is linked.
  */
-export type AAL = "aal0" | "aal1" | "aal2" | "aal3";
+export function redactCredentials<T extends { credentials?: unknown }>(
+  identity: T,
+  allowExposure: boolean,
+): T {
+  if (allowExposure || !identity.credentials || typeof identity.credentials !== "object") {
+    return identity;
+  }
+  const redacted: Record<string, unknown> = {};
+  for (const [type, cred] of Object.entries(identity.credentials as Record<string, unknown>)) {
+    if (SENSITIVE_CREDENTIAL_TYPES.has(type) && cred && typeof cred === "object") {
+      const { config, ...rest } = cred as Record<string, unknown>;
+      redacted[type] = {
+        ...rest,
+        config:
+          config === undefined ? undefined : "[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]",
+      };
+    } else {
+      redacted[type] = cred;
+    }
+  }
+  return { ...identity, credentials: redacted };
+}
