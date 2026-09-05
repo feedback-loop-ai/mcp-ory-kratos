@@ -1,622 +1,350 @@
 /**
  * Identity management tools for Kratos MCP Server
  *
- * Implements tools for listing, viewing, creating, updating, and deleting identities
+ * Implements tools for listing, viewing, creating, updating, and deleting
+ * identities, plus identity schema lookups.
  * @module tools/identity
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { DeleteIdentityCredentialsTypeEnum } from "@ory/kratos-client";
-import { mapError } from "../errors/mapper.js";
-import type { KratosClients } from "../kratos/client.js";
-import { CREDENTIAL_TYPES, type CredentialType } from "../kratos/types.js";
-import type { CorrelatedLogger } from "../logging/logger.js";
+import type {
+  CreateIdentityBody,
+  IdentityPatchResponseActionEnum,
+  UpdateIdentityBody,
+} from "@ory/kratos-client";
+import type { z } from "zod";
+import { nextPageTokenOf } from "../kratos/pagination.js";
+import { ALL_CREDENTIAL_TYPES, redactCredentials } from "../kratos/types.js";
 import {
   BatchPatchIdentitiesInputSchema,
+  BatchPatchIdentitiesOutputSchema,
   CreateIdentityInputSchema,
   DeleteIdentityCredentialInputSchema,
   DeleteIdentityInputSchema,
   GetIdentityByExternalIdInputSchema,
   GetIdentityInputSchema,
+  GetIdentitySchemaInputSchema,
+  IdentitySummarySchema,
   ListIdentitiesInputSchema,
+  ListIdentitiesOutputSchema,
+  ListIdentitySchemasInputSchema,
+  PaginatedOutputSchema,
+  PassthroughObjectSchema,
   PatchIdentityInputSchema,
+  SetIdentityStateInputSchema,
   UpdateIdentityInputSchema,
 } from "../schemas/tools.js";
+import {
+  CANCELLED,
+  CREATE,
+  DESTRUCTIVE,
+  defineTool,
+  READ_ONLY,
+  type ToolContext,
+  UPDATE,
+  UPDATE_IDEMPOTENT,
+} from "./define.js";
 
-// Map credential type to API parameter (derived from the shared credential type list)
-const CREDENTIAL_TYPE_MAP: Record<string, CredentialType> = Object.fromEntries(
-  CREDENTIAL_TYPES.map((type) => [type, type]),
-);
+type Passthrough = z.infer<typeof PassthroughObjectSchema>;
+type IdentitySummary = z.infer<typeof IdentitySummarySchema>;
+type CreateIdentityInput = z.infer<typeof CreateIdentityInputSchema>;
+type UpdateIdentityInput = z.infer<typeof UpdateIdentityInputSchema>;
 
-/**
- * Register identity query tools (list, get, get_by_external_id)
- * Used in Phase 4 (US2)
- */
-export function registerIdentityQueryTools(
-  server: McpServer,
-  kratosClients: KratosClients,
-  getLogger: () => CorrelatedLogger,
-): void {
-  // kratos_list_identities - List identities with optional filtering
-  server.tool(
-    "kratos_list_identities",
-    "List identities with optional filtering by credential identifier (e.g., email). Returns paginated results.",
-    ListIdentitiesInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
+const ListIdentitySchemasOutputSchema = PaginatedOutputSchema(PassthroughObjectSchema);
 
-      log.info("Listing identities", {
-        tool: "kratos_list_identities",
-      });
+/** Map the camelCase create input onto the snake_case Kratos body */
+function toCreateIdentityBody(input: CreateIdentityInput): CreateIdentityBody {
+  return {
+    schema_id: input.schemaId,
+    traits: input.traits,
+    state: input.state,
+    metadata_public: input.metadataPublic,
+    metadata_admin: input.metadataAdmin,
+    external_id: input.externalId,
+    organization_id: input.organizationId,
+    credentials: input.credentials,
+    verifiable_addresses: input.verifiableAddresses?.map((address) => ({
+      value: address.value,
+      via: address.via,
+      verified: address.verified,
+      status: address.status ?? (address.verified ? "completed" : "pending"),
+    })),
+    recovery_addresses: input.recoveryAddresses,
+  };
+}
 
-      const startTime = Date.now();
+/** Map the camelCase update input onto the snake_case Kratos body */
+function toUpdateIdentityBody(input: UpdateIdentityInput): UpdateIdentityBody {
+  return {
+    schema_id: input.schemaId,
+    traits: input.traits,
+    state: input.state,
+    metadata_public: input.metadataPublic,
+    metadata_admin: input.metadataAdmin,
+    external_id: input.externalId,
+    credentials: input.credentials,
+  };
+}
 
-      try {
-        const response = await kratosClients.identity.listIdentities({
-          pageSize: args.pageSize ?? 20,
-          pageToken: args.pageToken,
-          credentialsIdentifier: args.credentialsIdentifier,
-        });
+/** Kratos `Identity` (traits: object) is not structurally assignable to the zod summary type */
+function asSummary(identity: unknown): IdentitySummary {
+  return identity as IdentitySummary;
+}
 
-        log.info("Identities listed successfully", {
-          tool: "kratos_list_identities",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  identities: response.data,
-                  count: response.data.length,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to list identities", {
-          tool: "kratos_list_identities",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "list_identities");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // kratos_get_identity - Get a single identity by ID
-  server.tool(
-    "kratos_get_identity",
-    "Get detailed information about a specific identity by its ID. Optionally include credential information (admin only).",
-    GetIdentityInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-
-      log.info("Getting identity", {
-        tool: "kratos_get_identity",
-      });
-
-      const startTime = Date.now();
-
-      try {
-        const response = await kratosClients.identity.getIdentity({
-          id: args.id,
-          includeCredential: args.includeCredentials ? [...CREDENTIAL_TYPES] : undefined,
-        });
-
-        log.info("Identity retrieved successfully", {
-          tool: "kratos_get_identity",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to get identity", {
-          tool: "kratos_get_identity",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "get_identity");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // kratos_get_identity_by_external_id - Get identity by its external_id field
-  server.tool(
-    "kratos_get_identity_by_external_id",
-    "Look up an identity by its external_id field (exact match, requires Kratos 25.4.0+). The external_id links an identity to a record in an external system and is unique across all identities. Returns a structured NOT_FOUND error if no identity has the given external_id.",
-    GetIdentityByExternalIdInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-
-      log.info("Getting identity by external ID", {
-        tool: "kratos_get_identity_by_external_id",
-      });
-
-      const startTime = Date.now();
-
-      try {
-        const response = await kratosClients.identity.getIdentityByExternalID({
-          externalID: args.externalId,
-        });
-
-        log.info("Identity found by external ID", {
-          tool: "kratos_get_identity_by_external_id",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to get identity by external ID", {
-          tool: "kratos_get_identity_by_external_id",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "get_identity_by_external_id");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
+function toBatchAction(action: IdentityPatchResponseActionEnum | undefined) {
+  return action === "create" || action === "error" ? action : ("unknown" as const);
 }
 
 /**
- * Register identity management tools (create, update, patch, delete)
- * Used in Phase 6 (US4)
+ * Register identity tools (query, mutation, batch, schema)
  */
-export function registerIdentityManagementTools(
-  server: McpServer,
-  kratosClients: KratosClients,
-  getLogger: () => CorrelatedLogger,
-): void {
-  // kratos_create_identity - Create a new identity
-  server.tool(
-    "kratos_create_identity",
-    "Create a new identity with the specified schema, traits, and optional metadata. The traits must match the schema definition.",
-    CreateIdentityInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
+export function registerIdentityTools(ctx: ToolContext): void {
+  const { clients, config } = ctx;
+  const redact = <T extends { credentials?: unknown }>(identity: T): T =>
+    redactCredentials(identity, config.allowCredentialExposure);
 
-      log.info("Creating identity", {
-        tool: "kratos_create_identity",
+  defineTool(ctx, {
+    name: "kratos_list_identities",
+    title: "List identities",
+    description:
+      "List identities with optional filtering by exact or similar credential identifier (e.g. email), ID list, or organization. Returns nextPageToken for pagination. Use includeCredential to also load linked credentials (secret config is redacted by default).",
+    toolset: "identities",
+    inputSchema: ListIdentitiesInputSchema,
+    outputSchema: ListIdentitiesOutputSchema,
+    annotations: READ_ONLY,
+    run: async (args) => {
+      const response = await clients.identity.listIdentities({
+        pageSize: args.pageSize,
+        pageToken: args.pageToken,
+        ids: args.ids,
+        organizationId: args.organizationId,
+        credentialsIdentifier: args.credentialsIdentifier,
+        previewCredentialsIdentifierSimilar: args.previewCredentialsIdentifierSimilar,
+        includeCredential: args.includeCredential ? [...args.includeCredential] : undefined,
+        consistency: args.consistency,
       });
-
-      const startTime = Date.now();
-
-      try {
-        const response = await kratosClients.identity.createIdentity({
-          createIdentityBody: {
-            schema_id: args.schemaId,
-            traits: args.traits,
-            state: args.state,
-            metadata_public: args.metadataPublic,
-            metadata_admin: args.metadataAdmin,
-          },
-        });
-
-        log.info("Identity created successfully", {
-          tool: "kratos_create_identity",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to create identity", {
-          tool: "kratos_create_identity",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "create_identity");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
+      const identities = args.includeCredential ? response.data.map(redact) : response.data;
+      const items = identities.map(asSummary);
+      return { items, count: items.length, nextPageToken: nextPageTokenOf(response) };
     },
-  );
+  });
 
-  // kratos_batch_patch_identities - Bulk identity creation via PATCH /admin/identities
-  server.tool(
-    "kratos_batch_patch_identities",
-    "Create multiple identities in a single batch request (up to 100 per call). This is a bulk write operation: items succeed or fail independently (non-atomic) - the response reports a per-item result with action 'create' (with the new identity ID) or 'error' (with the Kratos error detail), plus a summary of succeeded/failed counts. Optionally supply a patchId (UUID) per item to correlate results.",
-    BatchPatchIdentitiesInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-
-      log.info("Batch patching identities", {
-        tool: "kratos_batch_patch_identities",
-        batchSize: args.identities.length,
-      });
-
-      const startTime = Date.now();
-
-      try {
-        const response = await kratosClients.identity.batchPatchIdentities({
-          patchIdentitiesBody: {
-            identities: args.identities.map((item) => ({
-              create: {
-                schema_id: item.create.schemaId,
-                traits: item.create.traits,
-                state: item.create.state,
-                metadata_public: item.create.metadataPublic,
-                metadata_admin: item.create.metadataAdmin,
-              },
-              patch_id: item.patchId,
-            })),
-          },
-        });
-
-        const items = response.data.identities ?? [];
-        const results = items.map((item, index) => ({
-          index,
-          action: item.action,
-          identityId: item.identity,
-          patchId: item.patch_id,
-          error: item.error,
-        }));
-        const summary = {
-          total: results.length,
-          succeeded: items.filter((item) => item.action === "create").length,
-          failed: items.filter((item) => item.action === "error").length,
-        };
-
-        log.info("Batch patch completed", {
-          tool: "kratos_batch_patch_identities",
-          durationMs: Date.now() - startTime,
-          batchSize: args.identities.length,
-          succeeded: summary.succeeded,
-          failed: summary.failed,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ results, summary }, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to batch patch identities", {
-          tool: "kratos_batch_patch_identities",
-          durationMs: Date.now() - startTime,
-          batchSize: args.identities.length,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "batch_patch_identities");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
+  defineTool(ctx, {
+    name: "kratos_get_identity",
+    title: "Get identity",
+    description:
+      "Get a single identity by ID. Use includeCredential (e.g. ['oidc', 'password']) to see which credentials are linked; secret config is redacted unless KRATOS_ALLOW_CREDENTIAL_EXPOSURE is set.",
+    toolset: "identities",
+    inputSchema: GetIdentityInputSchema,
+    outputSchema: IdentitySummarySchema,
+    annotations: READ_ONLY,
+    run: async (args) => {
+      const includeCredential =
+        args.includeCredential ?? (args.includeCredentials ? [...ALL_CREDENTIAL_TYPES] : undefined);
+      const response = await clients.identity.getIdentity({ id: args.id, includeCredential });
+      return asSummary(redact(response.data));
     },
-  );
+  });
 
-  // kratos_update_identity - Full update of an identity
-  server.tool(
-    "kratos_update_identity",
-    "Perform a full update of an identity, replacing all fields. All required fields must be provided.",
-    UpdateIdentityInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-
-      log.info("Updating identity", {
-        tool: "kratos_update_identity",
+  defineTool(ctx, {
+    name: "kratos_get_identity_by_external_id",
+    title: "Get identity by external ID",
+    description:
+      "Look up an identity by its external_id field (exact match, requires Kratos 25.4.0+). The external_id links an identity to a record in an external system and is unique across all identities. Returns a structured NOT_FOUND error if no identity has the given external_id.",
+    toolset: "identities",
+    inputSchema: GetIdentityByExternalIdInputSchema,
+    outputSchema: IdentitySummarySchema,
+    annotations: READ_ONLY,
+    run: async (args) => {
+      const response = await clients.identity.getIdentityByExternalID({
+        externalID: args.externalId,
       });
-
-      const startTime = Date.now();
-
-      try {
-        const response = await kratosClients.identity.updateIdentity({
-          id: args.id,
-          updateIdentityBody: {
-            schema_id: args.schemaId,
-            traits: args.traits,
-            state: args.state,
-            metadata_public: args.metadataPublic,
-            metadata_admin: args.metadataAdmin,
-          },
-        });
-
-        log.info("Identity updated successfully", {
-          tool: "kratos_update_identity",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to update identity", {
-          tool: "kratos_update_identity",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "update_identity");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
+      return asSummary(response.data);
     },
-  );
+  });
 
-  // kratos_patch_identity - Partial update using JSON Patch
-  server.tool(
-    "kratos_patch_identity",
-    "Perform a partial update of an identity using JSON Patch operations. Useful for modifying specific fields without replacing the entire identity.",
-    PatchIdentityInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-
-      log.info("Patching identity", {
-        tool: "kratos_patch_identity",
+  defineTool(ctx, {
+    name: "kratos_create_identity",
+    title: "Create identity",
+    description:
+      "Create a new identity with the given schema and traits. Optionally set metadata, external_id, organization, pre-verified addresses, and import existing credentials (password hash, OIDC/SAML links). Traits must match the schema.",
+    toolset: "identities",
+    inputSchema: CreateIdentityInputSchema,
+    outputSchema: IdentitySummarySchema,
+    annotations: CREATE,
+    run: async (args) => {
+      const response = await clients.identity.createIdentity({
+        createIdentityBody: toCreateIdentityBody(args),
       });
+      return asSummary(response.data);
+    },
+  });
 
-      const startTime = Date.now();
+  defineTool(ctx, {
+    name: "kratos_update_identity",
+    title: "Update identity (full replace)",
+    description:
+      "Replace an identity's schema, traits, state, and metadata (PUT semantics). WARNING: fields you omit are cleared - omitting metadataPublic or metadataAdmin removes the existing metadata. Prefer kratos_patch_identity to change individual fields.",
+    toolset: "identities",
+    inputSchema: UpdateIdentityInputSchema,
+    outputSchema: IdentitySummarySchema,
+    annotations: UPDATE_IDEMPOTENT,
+    run: async (args) => {
+      const response = await clients.identity.updateIdentity({
+        id: args.id,
+        updateIdentityBody: toUpdateIdentityBody(args),
+      });
+      return asSummary(response.data);
+    },
+  });
 
-      try {
-        const response = await kratosClients.identity.patchIdentity({
-          id: args.id,
-          jsonPatch: args.patch.map((op) => ({
-            op: op.op,
-            path: op.path,
-            value: op.value,
+  defineTool(ctx, {
+    name: "kratos_patch_identity",
+    title: "Patch identity",
+    description:
+      "Partially update an identity with JSON Patch operations (add/remove/replace on paths like /traits/email, /state, /metadata_admin/role). Use this to change specific fields without replacing the whole identity.",
+    toolset: "identities",
+    inputSchema: PatchIdentityInputSchema,
+    outputSchema: IdentitySummarySchema,
+    annotations: UPDATE,
+    run: async (args) => {
+      const response = await clients.identity.patchIdentity({
+        id: args.id,
+        jsonPatch: args.patch.map((op) => ({ op: op.op, path: op.path, value: op.value })),
+      });
+      return asSummary(response.data);
+    },
+  });
+
+  defineTool(ctx, {
+    name: "kratos_set_identity_state",
+    title: "Set identity state",
+    description:
+      "Activate or suspend (inactive) an identity. An inactive identity cannot log in. Set revokeSessions to also delete all of its sessions, logging it out everywhere immediately (session deletion is irreversible).",
+    toolset: "identities",
+    inputSchema: SetIdentityStateInputSchema,
+    outputSchema: PassthroughObjectSchema,
+    annotations: UPDATE_IDEMPOTENT,
+    run: async (args, { confirm }) => {
+      const ok = await confirm(
+        `Set identity ${args.id} to ${args.state}${args.revokeSessions ? " and revoke all its sessions" : ""}?`,
+      );
+      if (!ok) return CANCELLED;
+      const response = await clients.identity.patchIdentity({
+        id: args.id,
+        jsonPatch: [{ op: "replace", path: "/state", value: args.state }],
+      });
+      if (args.revokeSessions) {
+        await clients.identity.deleteIdentitySessions({ id: args.id });
+      }
+      return { ...response.data, sessionsRevoked: args.revokeSessions } as Passthrough;
+    },
+  });
+
+  defineTool(ctx, {
+    name: "kratos_delete_identity",
+    title: "Delete identity",
+    description:
+      "Permanently delete an identity together with its credentials, sessions, and addresses. This cannot be undone; consider kratos_set_identity_state with state=inactive to suspend instead.",
+    toolset: "identities",
+    inputSchema: DeleteIdentityInputSchema,
+    outputSchema: PassthroughObjectSchema,
+    annotations: DESTRUCTIVE,
+    run: async (args, { confirm }) => {
+      if (!(await confirm(`Permanently delete identity ${args.id}? This cannot be undone.`))) {
+        return CANCELLED;
+      }
+      await clients.identity.deleteIdentity({ id: args.id });
+      return { success: true, message: `Identity ${args.id} has been permanently deleted` };
+    },
+  });
+
+  defineTool(ctx, {
+    name: "kratos_delete_identity_credential",
+    title: "Delete identity credential",
+    description:
+      "Remove one credential type from an identity (e.g. reset TOTP, WebAuthn, passkey, or lookup secrets while keeping the password). For oidc/saml pass identifier='<provider>:<subject>' to unlink a single provider. The credential is gone permanently; the user must re-enrol.",
+    toolset: "identities",
+    inputSchema: DeleteIdentityCredentialInputSchema,
+    outputSchema: PassthroughObjectSchema,
+    annotations: DESTRUCTIVE,
+    run: async (args, { confirm }) => {
+      const target = args.identifier ? `${args.type} (${args.identifier})` : args.type;
+      if (!(await confirm(`Delete ${target} credential from identity ${args.id}?`))) {
+        return CANCELLED;
+      }
+      await clients.identity.deleteIdentityCredentials({
+        id: args.id,
+        type: args.type,
+        identifier: args.identifier,
+      });
+      return { success: true, message: `${target} credential removed from identity ${args.id}` };
+    },
+  });
+
+  defineTool(ctx, {
+    name: "kratos_batch_patch_identities",
+    title: "Batch create identities",
+    description:
+      "Create up to 100 identities in one request (bulk import). Items succeed or fail independently: each result reports action 'create' (with the new identity ID) or 'error' (with Kratos error detail), plus a succeeded/failed summary. Supply a patchId per item to correlate results.",
+    toolset: "identities",
+    inputSchema: BatchPatchIdentitiesInputSchema,
+    outputSchema: BatchPatchIdentitiesOutputSchema,
+    annotations: CREATE,
+    run: async (args, { log }) => {
+      const response = await clients.identity.batchPatchIdentities({
+        patchIdentitiesBody: {
+          identities: args.identities.map((item) => ({
+            create: toCreateIdentityBody(item.create),
+            patch_id: item.patchId,
           })),
-        });
-
-        log.info("Identity patched successfully", {
-          tool: "kratos_patch_identity",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to patch identity", {
-          tool: "kratos_patch_identity",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "patch_identity");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // kratos_delete_identity - Delete an identity
-  server.tool(
-    "kratos_delete_identity",
-    "Permanently delete an identity and all associated data. This action cannot be undone.",
-    DeleteIdentityInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-
-      log.info("Deleting identity", {
-        tool: "kratos_delete_identity",
+        },
       });
-
-      const startTime = Date.now();
-
-      try {
-        await kratosClients.identity.deleteIdentity({
-          id: args.id,
-        });
-
-        log.info("Identity deleted successfully", {
-          tool: "kratos_delete_identity",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  message: `Identity ${args.id} has been permanently deleted`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to delete identity", {
-          tool: "kratos_delete_identity",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "delete_identity");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
+      const results = (response.data.identities ?? []).map((item) => ({
+        action: toBatchAction(item.action),
+        identity: item.identity,
+        patchId: item.patch_id,
+        error: item.error,
+      }));
+      const succeeded = results.filter((r) => r.action === "create").length;
+      const failed = results.filter((r) => r.action === "error").length;
+      if (failed > 0) {
+        log.warn("Batch patch had failures", { tool: "kratos_batch_patch_identities", failed });
       }
+      return { results, summary: { total: results.length, succeeded, failed } };
     },
-  );
+  });
 
-  // kratos_delete_identity_credential - Delete a specific credential type
-  server.tool(
-    "kratos_delete_identity_credential",
-    "Delete a specific credential type from an identity. For example, remove TOTP, WebAuthn, passkey, or one-time-code credentials while keeping password authentication.",
-    DeleteIdentityCredentialInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-
-      log.info("Deleting identity credential", {
-        tool: "kratos_delete_identity_credential",
+  defineTool(ctx, {
+    name: "kratos_list_identity_schemas",
+    title: "List identity schemas",
+    description:
+      "List the identity schemas configured in Kratos (ID plus JSON Schema). Use this to discover valid schemaId values and required traits before creating identities.",
+    toolset: "identities",
+    inputSchema: ListIdentitySchemasInputSchema,
+    outputSchema: ListIdentitySchemasOutputSchema,
+    annotations: READ_ONLY,
+    run: async (args) => {
+      const response = await clients.identity.listIdentitySchemas({
+        pageSize: args.pageSize,
+        pageToken: args.pageToken,
       });
-
-      const startTime = Date.now();
-
-      try {
-        const credType = CREDENTIAL_TYPE_MAP[args.type];
-        if (!credType) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    error: {
-                      code: "INVALID_CREDENTIAL_TYPE",
-                      message: `Invalid credential type: ${args.type}`,
-                      suggestion: `Valid types are: ${CREDENTIAL_TYPES.join(", ")}`,
-                    },
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        await kratosClients.identity.deleteIdentityCredentials({
-          id: args.id,
-          type: credType as DeleteIdentityCredentialsTypeEnum,
-        });
-
-        log.info("Identity credential deleted successfully", {
-          tool: "kratos_delete_identity_credential",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  success: true,
-                  message: `${args.type} credential removed from identity ${args.id}`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } catch (error) {
-        log.error("Failed to delete identity credential", {
-          tool: "kratos_delete_identity_credential",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "delete_identity_credential");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: mcpError }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
+      const items = response.data as unknown as Passthrough[];
+      return { items, count: items.length, nextPageToken: nextPageTokenOf(response) };
     },
-  );
+  });
+
+  defineTool(ctx, {
+    name: "kratos_get_identity_schema",
+    title: "Get identity schema",
+    description:
+      "Get the raw JSON Schema for an identity schema ID (e.g. 'default'). Use it to learn which traits are required and which are used as login identifiers.",
+    toolset: "identities",
+    inputSchema: GetIdentitySchemaInputSchema,
+    outputSchema: PassthroughObjectSchema,
+    annotations: READ_ONLY,
+    run: async (args) => {
+      const response = await clients.identity.getIdentitySchema({ id: args.id });
+      return response.data as Passthrough;
+    },
+  });
 }

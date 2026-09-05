@@ -8,10 +8,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CredentialAnalyticsOutput } from "../../src/schemas/tools";
-import { processIdentityForCredentialAnalytics } from "../../src/tools/analytics";
+import {
+  type CredentialAggregate,
+  processIdentityForCredentialAnalytics,
+} from "../../src/tools/analytics";
 
-function makeAnalytics(includeAdoption = true): CredentialAnalyticsOutput {
+function makeAnalytics(includeAdoption = true): CredentialAggregate {
   return {
     totalIdentities: 0,
     credentialDistribution: {},

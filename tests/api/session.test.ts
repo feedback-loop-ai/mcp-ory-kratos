@@ -9,8 +9,8 @@
  * correctly with existing sessions or handle empty results gracefully.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import type { Identity, Session } from "@ory/kratos-client";
+import type { Identity } from "@ory/kratos-client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getTestContext, type TestContext } from "../setup/context";
 import { createTestIdentityInput } from "../setup/fixtures";
 
@@ -41,9 +41,7 @@ describe("Session API", () => {
   afterAll(async () => {
     const result = await ctx.cleanup();
     if (!result.success) {
-      console.warn(
-        `Cleanup had failures. Failed to delete: ${result.failedDeletions.join(", ")}`
-      );
+      console.warn(`Cleanup had failures. Failed to delete: ${result.failedDeletions.join(", ")}`);
     }
     console.log(`Cleaned up ${result.identitiesDeleted} test identities`);
   });
@@ -110,9 +108,7 @@ describe("Session API", () => {
     it("should return 404 for non-existent session", async () => {
       const fakeSessionId = "00000000-0000-0000-0000-000000000000";
 
-      await expect(
-        ctx.clients.identity.getSession({ id: fakeSessionId })
-      ).rejects.toMatchObject({
+      await expect(ctx.clients.identity.getSession({ id: fakeSessionId })).rejects.toMatchObject({
         response: { status: 404 },
       });
     });
@@ -208,11 +204,11 @@ describe("Session API", () => {
     it("should return 404 for non-existent session", async () => {
       const fakeSessionId = "00000000-0000-0000-0000-000000000000";
 
-      await expect(
-        ctx.clients.identity.extendSession({ id: fakeSessionId })
-      ).rejects.toMatchObject({
-        response: { status: 404 },
-      });
+      await expect(ctx.clients.identity.extendSession({ id: fakeSessionId })).rejects.toMatchObject(
+        {
+          response: { status: 404 },
+        },
+      );
     });
 
     it("should successfully extend existing session expiry", async () => {
@@ -241,7 +237,7 @@ describe("Session API", () => {
       const newExpiry = response.data.expires_at;
       if (originalExpiry && newExpiry) {
         expect(new Date(newExpiry).getTime()).toBeGreaterThanOrEqual(
-          new Date(originalExpiry).getTime()
+          new Date(originalExpiry).getTime(),
         );
       }
     });
@@ -252,7 +248,7 @@ describe("Session API", () => {
       const fakeSessionId = "00000000-0000-0000-0000-000000000000";
 
       await expect(
-        ctx.clients.identity.disableSession({ id: fakeSessionId })
+        ctx.clients.identity.disableSession({ id: fakeSessionId }),
       ).rejects.toMatchObject({
         response: { status: 404 },
       });
@@ -291,7 +287,7 @@ describe("Session API", () => {
       const fakeIdentityId = "00000000-0000-0000-0000-000000000000";
 
       await expect(
-        ctx.clients.identity.deleteIdentitySessions({ id: fakeIdentityId })
+        ctx.clients.identity.deleteIdentitySessions({ id: fakeIdentityId }),
       ).rejects.toMatchObject({
         response: { status: 404 },
       });
@@ -307,10 +303,9 @@ describe("Session API", () => {
         // Should return 204 (no content) or 200 if sessions existed
         expect([200, 204]).toContain(response.status);
       } catch (error) {
-        // Kratos returns 404 when identity has no sessions - this is acceptable
-        const status = (error as { response?: { status: number } })?.response
-          ?.status;
-        expect(status).toBe(404);
+        // Kratos v1.x returns 404 when the identity has no sessions; v26+ returns 400
+        const status = (error as { response?: { status: number } })?.response?.status;
+        expect([400, 404]).toContain(status);
       }
 
       // Verify no sessions remain for this identity

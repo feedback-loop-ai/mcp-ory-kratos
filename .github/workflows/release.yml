@@ -39,7 +39,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: ${{ runner.os }}-bun-
 
       - name: Install dependencies
@@ -49,19 +49,12 @@ jobs:
         run: bun run lint
 
       - name: Type check
-        run: bun x tsc --noEmit
+        run: bun run typecheck
 
-      - name: Check for unit tests
-        id: check-tests
-        run: |
-          if [ -d "tests/unit" ] && [ -n "$(find tests/unit -name '*.test.ts' 2>/dev/null)" ]; then
-            echo "has_unit_tests=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_unit_tests=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Dependency audit
+        run: bun audit --audit-level=high
 
       - name: Run unit tests
-        if: steps.check-tests.outputs.has_unit_tests == 'true'
         run: bun x vitest run --config tests/vitest.config.ts --dir tests/unit
 
   build:
@@ -82,7 +75,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: ${{ runner.os }}-bun-
 
       - name: Install dependencies
@@ -153,6 +146,11 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
             echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
+
+      # npm >= 11.5 supports Trusted Publishing (OIDC) — no NPM_TOKEN needed once the
+      # package is linked to this workflow on npmjs.com. NPM_TOKEN is only a fallback.
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest && npm --version
 
       - name: Publish to npm
         uses: nick-fields/retry@v3

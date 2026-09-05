@@ -5,18 +5,28 @@
  * @module tools/analytics
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { mapError } from "../errors/mapper.js";
-import type { KratosClients } from "../kratos/client.js";
-import type { CorrelatedLogger } from "../logging/logger.js";
+import { inTimeRange, type ScanResult, scanPages } from "../kratos/pagination.js";
+import { CREDENTIAL_TYPES } from "../kratos/types.js";
 import {
   type CredentialAnalyticsInput,
   CredentialAnalyticsInputSchema,
   type CredentialAnalyticsOutput,
+  CredentialAnalyticsOutputSchema,
   type SessionAnalyticsInput,
   SessionAnalyticsInputSchema,
   type SessionAnalyticsOutput,
+  SessionAnalyticsOutputSchema,
 } from "../schemas/tools.js";
+import { defineTool, READ_ONLY, type ToolContext } from "./define.js";
+
+/** Scan bookkeeping fields shared by every analytics output */
+type ScanSummary = Pick<ScanResult<unknown>, "pagesScanned" | "truncated" | "nextPageToken">;
+
+/** Aggregate portion of the session analytics output (without scan summary) */
+export type SessionAggregate = Omit<SessionAnalyticsOutput, keyof ScanSummary>;
+
+/** Aggregate portion of the credential analytics output (without scan summary) */
+export type CredentialAggregate = Omit<CredentialAnalyticsOutput, keyof ScanSummary>;
 
 /**
  * Parse user agent string to extract device type and browser
@@ -58,30 +68,6 @@ export function parseUserAgent(userAgent: string): { deviceType: string; browser
  */
 function incrementCount(record: Record<string, number>, key: string): void {
   record[key] = (record[key] ?? 0) + 1;
-}
-
-/**
- * Extract page token from Link header
- */
-function extractPageToken(linkHeader: unknown): string | undefined {
-  if (typeof linkHeader !== "string") return undefined;
-  const nextMatch = linkHeader.match(/<[^>]*[?&]page_token=([^&>]+)[^>]*>;\s*rel="next"/);
-  return nextMatch?.[1];
-}
-
-/**
- * Check if session is within time range
- */
-function isSessionInTimeRange(
-  authenticatedAt: string | undefined,
-  fromDate: string | undefined,
-  toDate: string | undefined,
-): boolean {
-  if (!authenticatedAt) return true;
-  const authDate = new Date(authenticatedAt);
-  if (fromDate && authDate < new Date(fromDate)) return false;
-  if (toDate && authDate > new Date(toDate)) return false;
-  return true;
 }
 
 /**
@@ -141,7 +127,7 @@ function processSessionForAnalytics(
     authenticator_assurance_level?: string;
     devices?: Array<{ user_agent?: string }>;
   },
-  analytics: SessionAnalyticsOutput,
+  analytics: SessionAggregate,
   includeAuthMethods: boolean,
   includeDevices: boolean,
 ): void {
@@ -200,7 +186,7 @@ function recordAdoption(
  */
 export function processIdentityForCredentialAnalytics(
   identity: { credentials?: Record<string, unknown> },
-  analytics: CredentialAnalyticsOutput,
+  analytics: CredentialAggregate,
 ): void {
   analytics.totalIdentities++;
 
@@ -218,60 +204,23 @@ export function processIdentityForCredentialAnalytics(
   recordAdoption(analytics.passwordlessAdoption, hasPasswordless);
 }
 
-/**
- * Register session analytics tool (US1)
- */
-export function registerSessionAnalyticsTools(
-  server: McpServer,
-  kratosClients: KratosClients,
-  getLogger: () => CorrelatedLogger,
-): void {
-  // kratos_session_analytics - Aggregated session statistics
-  server.tool(
-    "kratos_session_analytics",
-    "Get aggregated session statistics including authentication methods, device types, and browser distribution. Useful for understanding user login patterns.",
-    SessionAnalyticsInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-      log.info("Generating session analytics", { tool: "kratos_session_analytics" });
-      const startTime = Date.now();
-
-      try {
-        const analytics = await fetchSessionAnalytics(kratosClients, args);
-
-        log.info("Session analytics generated successfully", {
-          tool: "kratos_session_analytics",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(analytics, null, 2) }],
-        };
-      } catch (error) {
-        log.error("Failed to generate session analytics", {
-          tool: "kratos_session_analytics",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "session_analytics");
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify({ error: mcpError }, null, 2) }],
-          isError: true,
-        };
-      }
-    },
-  );
+/** Copy the scan bookkeeping fields off a scan result */
+function scanSummaryOf(scan: ScanResult<unknown>): ScanSummary {
+  return {
+    pagesScanned: scan.pagesScanned,
+    truncated: scan.truncated,
+    ...(scan.nextPageToken ? { nextPageToken: scan.nextPageToken } : {}),
+  };
 }
 
 /**
  * Fetch and aggregate session analytics
  */
 async function fetchSessionAnalytics(
-  kratosClients: KratosClients,
+  ctx: ToolContext,
   args: SessionAnalyticsInput,
 ): Promise<SessionAnalyticsOutput> {
-  const analytics: SessionAnalyticsOutput = {
+  const analytics: SessionAggregate = {
     totalSessions: 0,
     activeSessions: 0,
     inactiveSessions: 0,
@@ -281,115 +230,86 @@ async function fetchSessionAnalytics(
     byBrowser: {},
     timeRange: { from: args.from, to: args.to },
   };
+  const includeAuthMethods = args.includeAuthMethods !== false;
+  const includeDevices = args.includeDevices !== false;
 
-  let pageToken: string | undefined;
-  let pagesProcessed = 0;
-  const maxPages = 100;
-
-  do {
-    const response = await kratosClients.identity.listSessions({
-      pageSize: 250,
-      pageToken,
-      expand: ["devices"],
-    });
-
-    for (const session of response.data) {
-      if (!isSessionInTimeRange(session.authenticated_at, args.from, args.to)) {
-        continue;
-      }
-      processSessionForAnalytics(
-        session,
-        analytics,
-        args.includeAuthMethods !== false,
-        args.includeDevices !== false,
-      );
-    }
-
-    pageToken = extractPageToken(response.headers?.link);
-    pagesProcessed++;
-  } while (pageToken && pagesProcessed < maxPages);
-
-  return analytics;
-}
-
-/**
- * Register credential analytics tool (US5)
- */
-export function registerCredentialAnalyticsTools(
-  server: McpServer,
-  kratosClients: KratosClients,
-  getLogger: () => CorrelatedLogger,
-): void {
-  // kratos_credential_analytics - Credential type distribution
-  server.tool(
-    "kratos_credential_analytics",
-    "Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn, passkey, code) are most used, plus MFA adoption (totp/webauthn/lookup_secret) and passwordless adoption (passkey) rates. Code credentials appear only in the distribution because they may be a first or second factor.",
-    CredentialAnalyticsInputSchema.shape,
-    async (args) => {
-      const log = getLogger();
-      log.info("Generating credential analytics", { tool: "kratos_credential_analytics" });
-      const startTime = Date.now();
-
-      try {
-        const analytics = await fetchCredentialAnalytics(kratosClients, args);
-
-        log.info("Credential analytics generated successfully", {
-          tool: "kratos_credential_analytics",
-          durationMs: Date.now() - startTime,
-        });
-
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(analytics, null, 2) }],
-        };
-      } catch (error) {
-        log.error("Failed to generate credential analytics", {
-          tool: "kratos_credential_analytics",
-          durationMs: Date.now() - startTime,
-          error: { message: error instanceof Error ? error.message : String(error) },
-        });
-
-        const mcpError = mapError(error, "credential_analytics");
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify({ error: mcpError }, null, 2) }],
-          isError: true,
-        };
-      }
-    },
+  const scan = await scanPages(
+    (pageToken) =>
+      ctx.clients.identity.listSessions({
+        pageSize: 250,
+        pageToken,
+        expand: includeDevices ? ["devices"] : undefined,
+      }),
+    { maxPages: args.maxPages ?? ctx.config.maxScanPages },
   );
+
+  for (const session of scan.items) {
+    if (!inTimeRange(session.authenticated_at, args.from, args.to)) {
+      continue;
+    }
+    processSessionForAnalytics(session, analytics, includeAuthMethods, includeDevices);
+  }
+
+  return { ...analytics, ...scanSummaryOf(scan) };
 }
 
 /**
  * Fetch and aggregate credential analytics
  */
 async function fetchCredentialAnalytics(
-  kratosClients: KratosClients,
+  ctx: ToolContext,
   args: CredentialAnalyticsInput,
 ): Promise<CredentialAnalyticsOutput> {
   const includeAdoption = args.includeMfa !== false;
-  const analytics: CredentialAnalyticsOutput = {
+  const analytics: CredentialAggregate = {
     totalIdentities: 0,
     credentialDistribution: {},
     mfaAdoption: includeAdoption ? { enabled: 0, disabled: 0 } : undefined,
     passwordlessAdoption: includeAdoption ? { enabled: 0, disabled: 0 } : undefined,
   };
 
-  let pageToken: string | undefined;
-  let pagesProcessed = 0;
-  const maxPages = 100;
+  const scan = await scanPages(
+    (pageToken) =>
+      ctx.clients.identity.listIdentities({
+        pageSize: 250,
+        pageToken,
+        includeCredential: [...CREDENTIAL_TYPES],
+      }),
+    { maxPages: args.maxPages ?? ctx.config.maxScanPages },
+  );
 
-  do {
-    const response = await kratosClients.identity.listIdentities({
-      pageSize: 250,
-      pageToken,
-    });
+  for (const identity of scan.items) {
+    processIdentityForCredentialAnalytics(identity, analytics);
+  }
 
-    for (const identity of response.data) {
-      processIdentityForCredentialAnalytics(identity, analytics);
-    }
+  return { ...analytics, ...scanSummaryOf(scan) };
+}
 
-    pageToken = extractPageToken(response.headers?.link);
-    pagesProcessed++;
-  } while (pageToken && pagesProcessed < maxPages);
+/**
+ * Register analytics tools (session analytics, credential analytics)
+ */
+export function registerAnalyticsTools(ctx: ToolContext): void {
+  defineTool(ctx, {
+    name: "kratos_session_analytics",
+    title: "Session analytics",
+    description:
+      "Get aggregated session statistics including authentication methods, device types, and browser distribution. Useful for understanding user login patterns. Scans up to maxPages pages of 250 sessions (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages if the scan did not cover all sessions.",
+    toolset: "analytics",
+    inputSchema: SessionAnalyticsInputSchema,
+    outputSchema: SessionAnalyticsOutputSchema,
+    annotations: READ_ONLY,
+    run: (args) => fetchSessionAnalytics(ctx, args),
+  });
 
-  return analytics;
+  defineTool(ctx, {
+    name: "kratos_credential_analytics",
+    title: "Credential analytics",
+    description:
+      "Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn, passkey, code) are most used, plus MFA adoption (totp/webauthn/lookup_secret) and passwordless adoption (passkey) rates. Code credentials appear only in the distribution because they may be a first or second factor. Scans up to maxPages pages of 250 identities (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages if the scan did not cover all identities.",
+    toolset: "analytics",
+    inputSchema: CredentialAnalyticsInputSchema,
+    outputSchema: CredentialAnalyticsOutputSchema,
+    annotations: READ_ONLY,
+    run: (args) => fetchCredentialAnalytics(ctx, args),
+  });
 }

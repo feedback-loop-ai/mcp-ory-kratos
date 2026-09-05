@@ -1,0 +1,15 @@
+# Local Kratos for integration tests: `docker compose up -d` then `bun run test:api`
+services:
+  kratos:
+    image: oryd/kratos:${KRATOS_VERSION:-v26.2.0}
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    ports:
+      - "4433:4433"
+      - "4434:4434"
+    volumes:
+      - ./tests/kratos:/etc/config/kratos:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4434/health/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

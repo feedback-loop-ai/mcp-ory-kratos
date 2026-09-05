@@ -6,16 +6,8 @@
  */
 
 import { loadConfig, type TestConfig } from "./config";
-import {
-  AuthenticationError,
-  ConnectionError,
-  isAxiosError,
-  VersionMismatchError,
-} from "./errors";
-import {
-  createKratosClients,
-  type TestKratosClients,
-} from "./context";
+import { createKratosClients, type TestKratosClients } from "./context";
+import { AuthenticationError, ConnectionError, isAxiosError, VersionMismatchError } from "./errors";
 
 /**
  * Load .env.test.local file if it exists
@@ -38,7 +30,10 @@ async function loadEnvFile(): Promise<void> {
             const value = valueParts.join("=").trim();
             // Remove surrounding quotes if present
             const unquoted = value.replace(/^["']|["']$/g, "");
-            process.env[key.trim()] = unquoted;
+            // Real environment variables (e.g. CI) take precedence over the file
+            if (process.env[key.trim()] === undefined) {
+              process.env[key.trim()] = unquoted;
+            }
           }
         }
       }
@@ -52,10 +47,7 @@ async function loadEnvFile(): Promise<void> {
 /**
  * Test connectivity to the Kratos instance
  */
-async function testConnectivity(
-  config: TestConfig,
-  clients: TestKratosClients
-): Promise<void> {
+async function testConnectivity(config: TestConfig, clients: TestKratosClients): Promise<void> {
   console.log(`  Testing connectivity to ${config.kratosAdminUrl}...`);
 
   try {
@@ -64,7 +56,7 @@ async function testConnectivity(
     if (response.data.status !== "ok") {
       throw new ConnectionError(
         config.kratosAdminUrl,
-        new Error(`Unexpected status: ${response.data.status}`)
+        new Error(`Unexpected status: ${response.data.status}`),
       );
     }
 
@@ -91,10 +83,7 @@ async function testConnectivity(
 /**
  * Validate authentication by making an authenticated request
  */
-async function testAuthentication(
-  config: TestConfig,
-  clients: TestKratosClients
-): Promise<void> {
+async function testAuthentication(_config: TestConfig, clients: TestKratosClients): Promise<void> {
   console.log("  Testing authentication...");
 
   try {
@@ -115,10 +104,7 @@ async function testAuthentication(
 /**
  * Validate Kratos version matches expected
  */
-async function testVersion(
-  config: TestConfig,
-  clients: TestKratosClients
-): Promise<void> {
+async function testVersion(config: TestConfig, clients: TestKratosClients): Promise<void> {
   console.log(`  Checking Kratos version (expected: ${config.expectedVersion})...`);
 
   try {

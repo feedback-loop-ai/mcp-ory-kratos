@@ -9,14 +9,10 @@
  * endpoints work correctly with existing messages or handle empty results gracefully.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
 import type { Message } from "@ory/kratos-client";
+import { beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../setup/config";
-import {
-  createKratosClients,
-  createTestContext,
-  type TestContext,
-} from "../setup/context";
+import { createKratosClients, createTestContext, type TestContext } from "../setup/context";
 
 describe("Courier API", () => {
   let ctx: TestContext;
@@ -74,7 +70,7 @@ describe("Courier API", () => {
       const fakeMessageId = "00000000-0000-0000-0000-000000000000";
 
       await expect(
-        ctx.clients.courier.getCourierMessage({ id: fakeMessageId })
+        ctx.clients.courier.getCourierMessage({ id: fakeMessageId }),
       ).rejects.toMatchObject({
         response: { status: 404 },
       });
@@ -177,9 +173,7 @@ describe("Courier API", () => {
       expect(typeof message.id).toBe("string");
 
       expect(message).toHaveProperty("status");
-      expect(["queued", "sent", "processing", "abandoned"]).toContain(
-        message.status
-      );
+      expect(["queued", "sent", "processing", "abandoned"]).toContain(message.status);
 
       expect(message).toHaveProperty("type");
       expect(["email", "phone"]).toContain(message.type);

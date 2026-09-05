@@ -5,7 +5,8 @@
  * and provides a clear summary of test results.
  */
 
-import type { Reporter, File, TaskResultPack } from "vitest";
+import type { RunnerTestFile as File, RunnerTaskResultPack as TaskResultPack } from "vitest";
+import type { Reporter } from "vitest/node";
 
 interface TestSummary {
   total: number;
@@ -40,7 +41,7 @@ export default class CompatibilityReporter implements Reporter {
   }
 
   onTaskUpdate(packs: TaskResultPack[]): void {
-    for (const [id, result, meta] of packs) {
+    for (const [id, result, _meta] of packs) {
       if (!result) continue;
 
       // Extract suite name from the task
@@ -66,7 +67,7 @@ export default class CompatibilityReporter implements Reporter {
     }
   }
 
-  onFinished(files?: File[], errors?: unknown[]): void {
+  onFinished(_files?: File[], errors?: unknown[]): void {
     const duration = Date.now() - this.startTime;
     this.printSummary(duration, errors);
   }
@@ -112,7 +113,7 @@ export default class CompatibilityReporter implements Reporter {
         "Passed".padStart(10) +
         "Failed".padStart(10) +
         "Skipped".padStart(10) +
-        "Status".padStart(10)
+        "Status".padStart(10),
     );
     console.log("  " + "─".repeat(66));
 
@@ -130,7 +131,7 @@ export default class CompatibilityReporter implements Reporter {
           String(summary.passed).padStart(10) +
           String(summary.failed).padStart(10) +
           String(summary.skipped).padStart(10) +
-          status.padStart(10)
+          status.padStart(10),
       );
     }
 
@@ -139,9 +140,7 @@ export default class CompatibilityReporter implements Reporter {
     // Calculate compatibility percentage
     const effectiveTests = totalTests - totalSkipped;
     const compatibilityPercent =
-      effectiveTests > 0
-        ? ((totalPassed / effectiveTests) * 100).toFixed(1)
-        : "N/A";
+      effectiveTests > 0 ? ((totalPassed / effectiveTests) * 100).toFixed(1) : "N/A";
 
     // Print totals
     console.log("");

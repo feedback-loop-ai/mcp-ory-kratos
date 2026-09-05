@@ -37,3 +37,8 @@ coverage/
 
 # Claude Code
 .claude/
+
+# Test artefacts
+tests/coverage/
+tests/node_modules/
+tests/test-results.json
