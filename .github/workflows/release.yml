@@ -158,7 +158,9 @@ jobs:
           max_attempts: 2
           timeout_minutes: 5
           retry_wait_seconds: 10
-          command: npm publish --provenance --access public --tag ${{ steps.dist-tag.outputs.tag }}
+          # dist/ is the CI-built artifact from the build job; skip prepublishOnly (bun run build)
+          # because this runner has Node only.
+          command: npm publish --provenance --access public --ignore-scripts --tag ${{ steps.dist-tag.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
