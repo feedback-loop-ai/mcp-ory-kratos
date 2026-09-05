@@ -10,7 +10,7 @@ Fix the two silent-correctness defects (list tools never return a cursor; filter
 ## Technical Context
 
 **Language/Version**: TypeScript 5.9 (strict mode) on Bun 1.3.x (`packageManager: bun@1.3.3`); published bundle targets Node ≥ 20 (`engines.node >=20.0.0`, `#!/usr/bin/env node`)
-**Primary Dependencies**: @modelcontextprotocol/sdk ^1.30.0, @ory/kratos-client ^26.2.0, zod ^3.25.x, axios ^1.20 (override); dev: vitest ^4, @vitest/coverage-v8 ^4, @biomejs/biome ^2.5, typescript ^5.9
+**Primary Dependencies**: @modelcontextprotocol/sdk ^1.30.0, @ory/kratos-client ^26.2.0, zod ^3.25.x, axios ^1.20 (override); dev: vitest ^4, @vitest/coverage-v8 ^4, @biomejs/biome ^2.5, typescript ^5.9, ajv ^8 (test-only: validates each tool's description example against its JSON-Schema input, FR-006a)
 **Storage**: N/A (stateless proxy to Kratos Admin API; no per-call state survives the request)
 **Testing**: Unit — Vitest via an in-memory MCP harness (`tests/unit/harness.ts`: real `createServer` + `InMemoryTransport` + Proxy-backed `vi.fn()` Kratos stubs + captured log entries), 16 files / 224 tests. Integration — `tests/api/` against `docker compose` Kratos v26.2.0 (`dsn: memory`), files serial, includes `mcp-e2e.test.ts` driving the server over stdio through a real `Client`
 **Target Platform**: Linux/macOS server-side; stdio MCP transport only (Claude Code, VS Code, any MCP client)
