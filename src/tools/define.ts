@@ -7,8 +7,12 @@
  * @module tools/define
  */
 
-import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  McpServer,
+  RegisteredTool,
+  ToolCallback,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { Config, Toolset } from "../config.js";
 import { mapError } from "../errors/mapper.js";
@@ -76,7 +80,10 @@ function withCancellation(schema: AnyObjectSchema): AnyObjectSchema {
   return schema.partial().extend(CancelledResultSchema.partial().shape).passthrough();
 }
 
-function toolResult(payload: unknown, opts: { structured: boolean; isError?: boolean }) {
+function toolResult(
+  payload: unknown,
+  opts: { structured: boolean; isError?: boolean },
+): CallToolResult {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
     ...(opts.structured ? { structuredContent: payload as Record<string, unknown> } : {}),
@@ -120,6 +127,40 @@ export function defineTool<I extends AnyObjectSchema, O extends AnyObjectSchema>
     throw new Error(`Tool ${def.name} is destructive but defines no confirmMessage`);
   }
 
+  // The SDK validates args against def.inputSchema before invoking the handler, so
+  // `args` is exactly z.infer<I>. ToolCallback<I> is a conditional type the compiler
+  // cannot resolve for a generic I, hence the widening through `unknown` (no `any`).
+  const handler = (async (args: z.infer<I>): Promise<CallToolResult> => {
+    const log = getLogger();
+    const startTime = Date.now();
+    log.info("Tool invoked", { tool: def.name });
+
+    try {
+      if (destructive && config.confirmDestructive && def.confirmMessage) {
+        const ok = await confirmViaElicitation(server, def.confirmMessage(args));
+        if (!ok) {
+          log.info("Tool cancelled by user", {
+            tool: def.name,
+            durationMs: Date.now() - startTime,
+          });
+          return toolResult(CANCELLED, { structured });
+        }
+      }
+      const out = await def.run(args, { log });
+      log.info("Tool completed", { tool: def.name, durationMs: Date.now() - startTime });
+      return toolResult(out, { structured });
+    } catch (error) {
+      const mcpError = mapError(error, context);
+      log.error("Tool failed", {
+        tool: def.name,
+        durationMs: Date.now() - startTime,
+        error: { code: mcpError.code, message: mcpError.message },
+      });
+      // Error results are exempt from outputSchema validation, so never send structuredContent here
+      return toolResult({ error: mcpError }, { structured: false, isError: true });
+    }
+  }) as unknown as ToolCallback<I>;
+
   const registered = server.registerTool(
     def.name,
     {
@@ -132,37 +173,7 @@ export function defineTool<I extends AnyObjectSchema, O extends AnyObjectSchema>
         : {}),
       annotations: { openWorldHint: false, ...def.annotations },
     },
-    // biome-ignore lint/suspicious/noExplicitAny: SDK callback generics resolve args from the raw shape
-    (async (args: any) => {
-      const log = getLogger();
-      const startTime = Date.now();
-      log.info("Tool invoked", { tool: def.name });
-
-      try {
-        if (destructive && config.confirmDestructive && def.confirmMessage) {
-          const ok = await confirmViaElicitation(server, def.confirmMessage(args as z.infer<I>));
-          if (!ok) {
-            log.info("Tool cancelled by user", {
-              tool: def.name,
-              durationMs: Date.now() - startTime,
-            });
-            return toolResult(CANCELLED, { structured });
-          }
-        }
-        const out = await def.run(args as z.infer<I>, { log });
-        log.info("Tool completed", { tool: def.name, durationMs: Date.now() - startTime });
-        return toolResult(out, { structured });
-      } catch (error) {
-        const mcpError = mapError(error, context);
-        log.error("Tool failed", {
-          tool: def.name,
-          durationMs: Date.now() - startTime,
-          error: { code: mcpError.code, message: mcpError.message },
-        });
-        // Error results are exempt from outputSchema validation, so never send structuredContent here
-        return toolResult({ error: mcpError }, { structured: false, isError: true });
-      }
-    }) as Parameters<typeof server.registerTool>[2],
+    handler,
   );
 
   const hidden =
