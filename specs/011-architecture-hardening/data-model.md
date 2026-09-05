@@ -127,6 +127,10 @@ Read failures throw (→ JSON-RPC error), never return an error body as content.
 
 `LogEntry = { timestamp, level, message, correlationId?, tool?, resource?, durationMs?, error?: {code?, message?}, ...context }` written as JSON lines to stderr. A sink forwards `warn`/`error` entries to the client via `logging/message`; `logging/setLevel` adjusts the minimum level. No traits, credentials, or tokens are ever logged.
 
+### Session revocation (`revokeAllSessions`)
+
+`deleteIdentitySessions` on an identity with no sessions returns 404 (Kratos v1.x) or 400 (v26.x). Both are treated as success (desired end state already holds). `kratos_set_identity_state` reports `sessionsRevoked: boolean` = whether any sessions existed; `kratos_delete_identity_sessions` returns `success: true` with a message distinguishing "deleted" from "had no active sessions". Any other status propagates to `mapError`.
+
 ## State transitions
 
 None persisted. Per-call: `invoked → (confirm?) → upstream call → completed | failed | cancelled`.

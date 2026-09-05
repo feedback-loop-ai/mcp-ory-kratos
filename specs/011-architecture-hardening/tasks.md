@@ -207,7 +207,8 @@ Single project: `src/`, `tests/` at repository root (per plan.md). CI lives in `
 - [x] T064 Constitution PATCH 1.1.0 → 1.1.1 in `.specify/memory/constitution.md`: stack table tracks `@modelcontextprotocol/sdk ^1.30.x`, lockfile `bun.lock`, Kratos ^26.2.x (plan Constitution Check deviation) (commit 88ca6ec)
 - [x] T065 Run full verification: `bun run lint`, `bun run typecheck`, `bun run test:unit` (coverage ≥ thresholds, suite < 5 s), `bun audit --audit-level=high` (0 findings), `docker compose up -d --wait && bun run test:api` (FR-028, FR-031, SC-006, SC-008, SC-010) (commit 976cd06)
 - [ ] T066 After merge, tag `v0.3.0` through the feature 006 release workflow (`.github/workflows/release.yml`) so package version, MCP-reported version and git tag all read `0.3.0` (FR-025)
-- [ ] T067 [P] Extend `tests/api/mcp-e2e.test.ts` to drive `kratos_set_identity_state` (with `revokeSessions`) and `kratos_list_identity_schemas` / `kratos_get_identity_schema` over stdio against real Kratos, as plan.md § Project Structure claims for the e2e file; these paths are currently covered only by the in-memory harness (`tests/unit/identity-tools.test.ts`) (FR-029, US4 acceptance 4–5)
+- [x] T067 [P] Extend `tests/api/mcp-e2e.test.ts` to drive `kratos_set_identity_state` (with `revokeSessions`) and `kratos_list_identity_schemas` / `kratos_get_identity_schema` over stdio against real Kratos, as plan.md § Project Structure claims for the e2e file; these paths are currently covered only by the in-memory harness (`tests/unit/identity-tools.test.ts`) (FR-029, US4 acceptance 4–5) (commit 4981def)
+- [x] T068 Add `src/kratos/sessions.ts` `revokeAllSessions` so `kratos_set_identity_state` (revokeSessions) and `kratos_delete_identity_sessions` treat Kratos "no sessions" (404 v1.x / 400 v26.x) as success; `sessionsRevoked` reports whether sessions existed; unit tests in `tests/unit/sessions-helper.test.ts` (FR-017, US4 acceptance 4; found by T067) (commit 4981def)
 
 ---
 
@@ -306,7 +307,7 @@ In practice the whole feature landed as one refactor commit (976cd06) because ev
 | FR-026 raw HTTP timeout + shared error codes | T008, T019, T040, T045 |
 | FR-027 fail-fast on unknown toolsets / malformed headers | T006, T019 |
 | FR-028 coverage over server sources, 80/80/70/80 | T002, T019, T049, T052, T055, T065 |
-| FR-029 CI integration job with containerised Kratos + stdio e2e | T047, T048, T051, T052, T067 |
+| FR-029 CI integration job with containerised Kratos + stdio e2e | T047, T048, T051, T052, T067, T068 |
 | FR-030 every tool unit-tested through a real MCP client | T016, T018, T020, T021, T022, T027, T033, T036–T040 |
 | FR-031 lint/typecheck over tests, audit job, Dependabot | T001, T003, T004, T005, T052, T053, T054, T065 |
 | FR-032 SDK ^1.30, no deprecated `server.tool`/`server.resource` | T001, T012, T046, T056 |
@@ -330,7 +331,7 @@ Every FR (FR-001…FR-034 incl. FR-004a, FR-020a, FR-024a) and every SC maps to 
 ## Open follow-ups
 
 - **T066** — tag `v0.3.0` via the release workflow after merge (FR-025 requires package version, MCP version and git tag to match; the first two are already `0.3.0`, the tag does not exist until release).
-- **T067** — plan.md § Project Structure describes `tests/api/mcp-e2e.test.ts` as covering "set-state, schemas" (tools); the file currently covers tools/list + instructions, version, create/get(redacted)/page/delete, and the schema *resource* template. `kratos_set_identity_state`, `kratos_list_identity_schemas` and `kratos_get_identity_schema` are exercised only by the in-memory harness. FR-029 is met (the e2e test exists and runs in CI); this is a plan/test-scope mismatch, not an unmet FR.
+- **T067** — closed (commit 4981def): e2e now drives set-state and both schema tools over stdio. Doing so exposed that Kratos v26.2.0 answers 400 when revoking sessions of an identity that has none, which made `revokeSessions: true` fail — fixed in T068.
 - The plan's constitution PATCH follow-up is **closed** (commit 88ca6ec, constitution 1.1.1) and is recorded as done in T064.
 
 ## Notes
