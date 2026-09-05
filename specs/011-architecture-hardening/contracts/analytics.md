@@ -12,7 +12,7 @@
 
 **Description**
 
-> Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn, passkey, code) are most used, plus MFA adoption (totp/webauthn/lookup_secret) and passwordless adoption (passkey) rates. Code credentials appear only in the distribution because they may be a first or second factor. Scans up to maxPages pages of 250 identities (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages if the scan did not cover all identities.
+> Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn, passkey, code) are most used, plus MFA adoption (totp/webauthn/lookup_secret) and passwordless adoption (passkey) rates. Code credentials appear only in the distribution because they may be a first or second factor. Scans up to maxPages pages of 250 identities (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages or pass its nextPageToken as pageToken to continue. Example: {"includeMfa": true, "maxPages": 50}.
 
 **Input schema (JSON Schema)**
 
@@ -25,6 +25,10 @@
       "minimum": 1,
       "maximum": 1000,
       "description": "Maximum pages to scan (default from KRATOS_MAX_SCAN_PAGES, 20)"
+    },
+    "pageToken": {
+      "type": "string",
+      "description": "Resume a truncated scan from the nextPageToken of a previous result"
     },
     "includeMfa": {
       "type": "boolean",
@@ -122,7 +126,7 @@
 
 **Description**
 
-> Get aggregated session statistics including authentication methods, device types, and browser distribution. Useful for understanding user login patterns. Scans up to maxPages pages of 250 sessions (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages if the scan did not cover all sessions.
+> Get aggregated session statistics including authentication methods, device types, and browser distribution. Useful for understanding user login patterns. Scans up to maxPages pages of 250 sessions (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages or pass its nextPageToken as pageToken to continue. Example: {"from": "2026-09-01T00:00:00Z", "includeDevices": false}.
 
 **Input schema (JSON Schema)**
 
@@ -135,6 +139,10 @@
       "minimum": 1,
       "maximum": 1000,
       "description": "Maximum pages to scan (default from KRATOS_MAX_SCAN_PAGES, 20)"
+    },
+    "pageToken": {
+      "type": "string",
+      "description": "Resume a truncated scan from the nextPageToken of a previous result"
     },
     "from": {
       "type": "string",

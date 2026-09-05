@@ -52,6 +52,10 @@ Analytics obey the same cap (`KRATOS_MAX_SCAN_PAGES`, default 20):
 ```
 kratos_session_analytics { "includeDevices": false, "maxPages": 50 }
 → { "totalSessions": 12000, ..., "pagesScanned": 48, "truncated": false }
+
+kratos_credential_analytics { "maxPages": 10 }
+→ { ..., "pagesScanned": 10, "truncated": true, "nextPageToken": "eyJ..." }
+kratos_credential_analytics { "maxPages": 10, "pageToken": "eyJ..." }   // resumes from page 11
 ```
 
 ## Destructive confirmation (US2)
@@ -63,6 +67,13 @@ kratos_delete_identity { "id": "9f8d…" }
   ⇒ client shows "Permanently delete identity 9f8d…? [Confirm]"
   ⇒ decline → { "cancelled": true, "message": "Cancelled by user" }   (no Kratos call)
   ⇒ accept  → { "success": true, "message": "Identity 9f8d… deleted" }
+
+kratos_delete_identity_sessions { "identityId": "9f8d…" }
+  ⇒ client shows "Delete all sessions for identity 9f8d…? The user will be logged out everywhere. [Confirm]"
+  ⇒ accept, no sessions → { "success": true, "sessionsExisted": false, "message": "… had no active sessions" }
+
+kratos_set_identity_state { "id": "9f8d…", "state": "inactive", "revokeSessions": true }
+  ⇒ accept → { "id": "9f8d…", "state": "inactive", "sessionsRevoked": true }
 ```
 
 Clients without elicitation proceed directly; they see `destructiveHint: true` on the tool and may gate themselves.
@@ -98,7 +109,7 @@ kratos_create_recovery_link { "identityId": "9f8d…", "expiresIn": "1h30m", "re
 ```bash
 bun run lint            # src + tests
 bun run typecheck       # src + tests (tsconfig.test.json)
-bun run test:unit       # 213 tests, ~90% lines, thresholds enforced, < 1 s
+bun run test:unit       # 16 files / 224 tests; baseline 89.75% stmts / 78.91% branches / 89.36% funcs / 90.82% lines; thresholds 80/70/80/80 enforced; < 1 s
 bun run audit           # fails on high/critical
 
 docker compose up -d --wait && bun run test:api   # Kratos v26.2.0, 69 tests incl. MCP stdio e2e
@@ -114,7 +125,7 @@ CI runs all of the above on every PR (`.github/workflows/ci.yml`: lint, typechec
 defineTool(ctx, {
   name: "kratos_get_courier_message",
   title: "Get courier message",
-  description: "…",
+  description: '… Example: {"id": "<message uuid>"}.',   // every description ends with an example (FR-006a)
   toolset: "courier",
   inputSchema: GetCourierMessageInputSchema,
   outputSchema: PassthroughObjectSchema,
@@ -146,4 +157,7 @@ expect(res.structuredContent?.id).toBe("m1");
 | `kratos_list_sessions { limit }` | `{ pageSize, pageToken }` |
 | `kratos_get_identity { includeCredentials: true }` returns raw config | redacted unless `KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1`; prefer `includeCredential: [...]` |
 | Batch results `{ index, identityId }` | `{ action, identity, patchId, error }` + `summary.total` |
+| Destructive tools always return their result | may return `{ cancelled: true, message: "Cancelled by user" }` when confirmation is declined |
 | Server version `0.1.0` | package version |
+
+The same table, with migration guidance, lives in `README.md` § "Breaking changes in 0.3.0".

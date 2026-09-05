@@ -11,6 +11,7 @@ import { inTimeRange, nextPageTokenOf } from "../kratos/pagination.js";
 import { revokeAllSessions } from "../kratos/sessions.js";
 import {
   DeleteIdentitySessionsInputSchema,
+  DeleteIdentitySessionsOutputSchema,
   DisableSessionInputSchema,
   ExtendSessionInputSchema,
   GetSessionInputSchema,
@@ -18,8 +19,10 @@ import {
   ListIdentitySessionsOutputSchema,
   ListSessionsInputSchema,
   ListSessionsOutputSchema,
+  MutationResultSchema,
   PassthroughObjectSchema,
   type SessionFilter,
+  SessionSummarySchema,
 } from "../schemas/tools.js";
 import { DESTRUCTIVE, defineTool, READ_ONLY, type ToolContext, UPDATE } from "./define.js";
 
@@ -163,7 +166,7 @@ export function registerSessionTools(ctx: ToolContext): void {
     name: "kratos_list_sessions",
     title: "List sessions",
     description:
-      "List all sessions across all identities with optional filtering by active status. Use expand to include identity or device details. When `filter` is set (auth method, provider, time range) filtering is applied client-side over up to maxPages pages of 100 sessions until pageSize matches are collected; the response then includes pagesScanned, truncated and a nextPageToken to resume from.",
+      'List all sessions across all identities with optional filtering by active status. Use expand to include identity or device details. When `filter` is set (auth method, provider, time range) filtering is applied client-side over up to maxPages pages of 100 sessions until pageSize matches are collected; the response then includes pagesScanned, truncated and a nextPageToken to resume from. Example: {"active": true, "pageSize": 20}.',
     toolset: "sessions",
     inputSchema: ListSessionsInputSchema,
     outputSchema: ListSessionsOutputSchema,
@@ -193,7 +196,7 @@ export function registerSessionTools(ctx: ToolContext): void {
     name: "kratos_get_session",
     title: "Get session",
     description:
-      "Get detailed information about a specific session by its ID. Use expand to include identity or device details.",
+      'Get detailed information about a specific session by its ID. Use expand to include identity or device details. Example: {"id": "3a1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "expand": ["identity"]}.',
     toolset: "sessions",
     inputSchema: GetSessionInputSchema,
     outputSchema: PassthroughObjectSchema,
@@ -208,7 +211,7 @@ export function registerSessionTools(ctx: ToolContext): void {
     name: "kratos_list_identity_sessions",
     title: "List identity sessions",
     description:
-      "List all sessions for a specific identity. Useful for investigating a user's login history and active sessions. Returns nextPageToken for pagination.",
+      'List all sessions for a specific identity. Useful for investigating a user\'s login history and active sessions. Returns nextPageToken for pagination. Example: {"identityId": "9f8d7c6b-5a49-4838-9271-605948372615"}.',
     toolset: "sessions",
     inputSchema: ListIdentitySessionsInputSchema,
     outputSchema: ListIdentitySessionsOutputSchema,
@@ -233,30 +236,32 @@ export function registerSessionTools(ctx: ToolContext): void {
     name: "kratos_disable_session",
     title: "Disable session",
     description:
-      "Revoke/disable a specific session, effectively logging the user out from that session.",
+      'Revoke/disable a specific session, effectively logging the user out from that session. Example: {"id": "3a1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}.',
     toolset: "sessions",
     inputSchema: DisableSessionInputSchema,
-    outputSchema: PassthroughObjectSchema,
+    outputSchema: MutationResultSchema,
     annotations: DESTRUCTIVE,
     confirmMessage: (args) => `Disable session ${args.id}? The user will be logged out.`,
     run: async (args) => {
       await ctx.clients.identity.disableSession({ id: args.id });
-      return { success: true, message: `Session ${args.id} has been disabled` };
+      return { success: true as const, message: `Session ${args.id} has been disabled` };
     },
   });
 
   defineTool(ctx, {
     name: "kratos_extend_session",
     title: "Extend session",
-    description: "Extend a session's expiration time, keeping the user logged in longer.",
+    description:
+      'Extend a session\'s expiration time, keeping the user logged in longer (this widens the user\'s access window). Example: {"id": "<session uuid>"}.',
     toolset: "sessions",
     inputSchema: ExtendSessionInputSchema,
-    outputSchema: PassthroughObjectSchema,
+    outputSchema: SessionSummarySchema,
     annotations: UPDATE,
-    confirmMessage: (args) => `Extend session ${args.id} beyond its current expiry?`,
+    confirmMessage: (args) =>
+      `Extend session ${args.id} beyond its current expiry? This widens the user's access window.`,
     run: async (args) => {
       const response = await ctx.clients.identity.extendSession({ id: args.id });
-      return response.data as unknown as Passthrough;
+      return { ...(response.data as unknown as Passthrough), id: response.data.id };
     },
   });
 
@@ -264,17 +269,18 @@ export function registerSessionTools(ctx: ToolContext): void {
     name: "kratos_delete_identity_sessions",
     title: "Delete identity sessions",
     description:
-      "Delete all sessions for a specific identity, effectively logging the user out from all devices.",
+      'Delete all sessions for a specific identity, effectively logging the user out from all devices. Example: {"identityId": "9f8d7c6b-5a49-4838-9271-605948372615"}.',
     toolset: "sessions",
     inputSchema: DeleteIdentitySessionsInputSchema,
-    outputSchema: PassthroughObjectSchema,
+    outputSchema: DeleteIdentitySessionsOutputSchema,
     annotations: DESTRUCTIVE,
     confirmMessage: (args) =>
       `Delete all sessions for identity ${args.identityId}? The user will be logged out everywhere.`,
     run: async (args) => {
       const deleted = await revokeAllSessions(ctx.clients.identity, args.identityId);
       return {
-        success: true,
+        success: true as const,
+        sessionsExisted: deleted,
         message: deleted
           ? `All sessions for identity ${args.identityId} have been deleted`
           : `Identity ${args.identityId} had no active sessions`,

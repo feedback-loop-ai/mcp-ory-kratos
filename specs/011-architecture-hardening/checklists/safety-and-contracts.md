@@ -77,6 +77,7 @@
 ## Observability
 
 - [x] CHK038 Are the mandatory fields of every invocation log entry (tool name, correlation ID, duration, error code/message) enumerated? [Completeness, Spec §FR-024a, §Key Entities "Invocation Trace"]
+  Re-verified: all three completion outcomes (completed / failed / cancelled) carry `durationMs`; the Key Entity's former "without durationMs" wording was corrected.
 - [x] CHK039 Are the log levels forwarded to the client and the client's ability to change the level specified? [Clarity, Spec §FR-024]
 - [x] CHK040 Is the content of the warning logged when every item in a batch fails specified (message text, counts carried)? [Gap, Spec §Edge Cases]
   Resolved: Edge Cases — `Batch patch had failures` with tool, `correlationId`, `failed`; once per invocation when any item failed.
@@ -108,5 +109,5 @@
 ## Notes
 
 - 52 items; 51 carry a traceability tag (98%).
-- 52 ticked, 0 unticked after `/speckit.clarify` round 3 (2026-09-05): every former finding is resolved by a spec amendment (FR-001a, FR-002a/b, FR-003a, FR-006, FR-007/007a, FR-009a/b, FR-010/010a, FR-011, FR-012/012a, FR-016a, FR-017a, FR-021, FR-024a, FR-028, Edge Cases, Key Entities, Assumptions). Note CHK018: the spec follows the shipped code (external-ID lookup returns no credentials), which differs from plan.md D5 — plan.md should be corrected in the next `/speckit.analyze`.
+- 52 ticked, 0 unticked after `/speckit.clarify` round 3 (2026-09-05): every former finding is resolved by a spec amendment (FR-001a, FR-002a/b, FR-003a, FR-006, FR-007/007a, FR-009a/b, FR-010/010a, FR-011, FR-012/012a, FR-016a, FR-017a, FR-021, FR-024a, FR-028, Edge Cases, Key Entities, Assumptions). CHK018: plan.md D5 and tasks.md T033/T035 were aligned with the spec in the `/speckit.analyze` remediation (only get-by-id and list items redact; the external-ID lookup requests no credentials).
 - Former highest-impact findings (CHK009, CHK036, CHK028/CHK029, CHK006) are closed; no Conflicts remain.

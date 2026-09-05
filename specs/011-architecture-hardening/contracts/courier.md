@@ -12,7 +12,7 @@
 
 **Description**
 
-> Get detailed information about a specific courier message, including delivery attempts and status history.
+> Get detailed information about a specific courier message, including delivery attempts and status history. Example: {"id": "3a1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}.
 
 **Input schema (JSON Schema)**
 
@@ -52,7 +52,7 @@
 
 **Description**
 
-> List courier messages (emails/SMS) sent by Kratos. Filter by delivery status or recipient to investigate delivery issues. Returns nextPageToken for pagination.
+> List courier messages (emails/SMS) sent by Kratos. Filter by delivery status or recipient to investigate delivery issues. Returns nextPageToken for pagination. Example: {"status": "sent"}.
 
 **Input schema (JSON Schema)**
 

@@ -12,7 +12,7 @@
 
 **Description**
 
-> Delete all sessions for a specific identity, effectively logging the user out from all devices.
+> Delete all sessions for a specific identity, effectively logging the user out from all devices. Example: {"identityId": "9f8d7c6b-5a49-4838-9271-605948372615"}.
 
 **Input schema (JSON Schema)**
 
@@ -40,12 +40,20 @@
 {
   "type": "object",
   "properties": {
-    "cancelled": {
+    "success": {
       "type": "boolean",
       "const": true
     },
     "message": {
       "type": "string"
+    },
+    "sessionsExisted": {
+      "type": "boolean",
+      "description": "False when the identity had no sessions to delete"
+    },
+    "cancelled": {
+      "type": "boolean",
+      "const": true
     }
   },
   "additionalProperties": true,
@@ -60,7 +68,7 @@
 
 **Description**
 
-> Revoke/disable a specific session, effectively logging the user out from that session.
+> Revoke/disable a specific session, effectively logging the user out from that session. Example: {"id": "3a1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}.
 
 **Input schema (JSON Schema)**
 
@@ -88,12 +96,16 @@
 {
   "type": "object",
   "properties": {
-    "cancelled": {
+    "success": {
       "type": "boolean",
       "const": true
     },
     "message": {
       "type": "string"
+    },
+    "cancelled": {
+      "type": "boolean",
+      "const": true
     }
   },
   "additionalProperties": true,
@@ -108,7 +120,7 @@
 
 **Description**
 
-> Extend a session's expiration time, keeping the user logged in longer.
+> Extend a session's expiration time, keeping the user logged in longer (this widens the user's access window). Example: {"id": "<session uuid>"}.
 
 **Input schema (JSON Schema)**
 
@@ -136,6 +148,21 @@
 {
   "type": "object",
   "properties": {
+    "id": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "authenticated_at": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": "string"
+    },
+    "authenticator_assurance_level": {
+      "type": "string"
+    },
     "cancelled": {
       "type": "boolean",
       "const": true
@@ -156,7 +183,7 @@
 
 **Description**
 
-> Get detailed information about a specific session by its ID. Use expand to include identity or device details.
+> Get detailed information about a specific session by its ID. Use expand to include identity or device details. Example: {"id": "3a1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "expand": ["identity"]}.
 
 **Input schema (JSON Schema)**
 
@@ -207,7 +234,7 @@
 
 **Description**
 
-> List all sessions for a specific identity. Useful for investigating a user's login history and active sessions. Returns nextPageToken for pagination.
+> List all sessions for a specific identity. Useful for investigating a user's login history and active sessions. Returns nextPageToken for pagination. Example: {"identityId": "9f8d7c6b-5a49-4838-9271-605948372615"}.
 
 **Input schema (JSON Schema)**
 
@@ -306,7 +333,7 @@
 
 **Description**
 
-> List all sessions across all identities with optional filtering by active status. Use expand to include identity or device details. When `filter` is set (auth method, provider, time range) filtering is applied client-side over up to maxPages pages of 100 sessions until pageSize matches are collected; the response then includes pagesScanned, truncated and a nextPageToken to resume from.
+> List all sessions across all identities with optional filtering by active status. Use expand to include identity or device details. When `filter` is set (auth method, provider, time range) filtering is applied client-side over up to maxPages pages of 100 sessions until pageSize matches are collected; the response then includes pagesScanned, truncated and a nextPageToken to resume from. Example: {"active": true, "pageSize": 20}.
 
 **Input schema (JSON Schema)**
 

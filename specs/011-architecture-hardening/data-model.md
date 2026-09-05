@@ -27,7 +27,7 @@ The server is a stateless proxy; every entity below is either a configuration va
 |---|---|---|
 | `name` | `kratos_*` string | unique |
 | `title` | string | human-readable |
-| `description` | string | agent-facing; destructive tools state irreversibility; scanning tools state the page cap |
+| `description` | string | agent-facing; ends with a usage example `Example: {...}` (FR-006a); destructive tools state irreversibility; scanning tools state the page cap and page size |
 | `toolset` | `Toolset` | exposure gating |
 | `inputSchema` | `ZodObject` | full object (not `.shape`) so `.passthrough()` survives JSON-Schema conversion |
 | `outputSchema` | `ZodObject` (optional) | when present the result is also emitted as `structuredContent` and validated by the SDK |
@@ -39,7 +39,7 @@ The server is a stateless proxy; every entity below is either a configuration va
 
 | Preset | readOnly | destructive | idempotent | Used by |
 |---|---|---|---|---|
-| `READ_ONLY` | true | — | true | all list/get/health/version/analytics/schema tools (14) |
+| `READ_ONLY` | true | — | true | all list/get/health/version/analytics/schema tools (15: identities 5, sessions 3, courier 2, health 3, analytics 2) |
 | `CREATE` | false | false | false | create_identity, batch_patch_identities, create_recovery_link/code |
 | `UPDATE_IDEMPOTENT` | false | true | true | update_identity, set_identity_state |
 | `UPDATE` | false | true | false | patch_identity, extend_session |
@@ -47,7 +47,17 @@ The server is a stateless proxy; every entity below is either a configuration va
 
 **Visibility rule**: a tool is disabled (hidden from `tools/list`, rejected on call) iff `toolset ∉ config.toolsets` OR (`config.readOnly` AND `readOnlyHint !== true`).
 
-**Confirmation rule** (enforced in `defineTool`, not per tool): before `run`, if `annotations.destructiveHint === true` AND `config.confirmDestructive` AND the client advertises `elicitation`, the server issues an elicitation with a boolean `confirm` field built from `confirmMessage(args)`; anything other than `accept` + `confirm === true` returns the Cancelled Result and skips `run`. Destructive tools' advertised output schema is their declared schema unioned with the cancelled shape (all declared fields optional + `cancelled`/`message`, passthrough).
+**Confirmation rule** (enforced in `defineTool`, not per tool): before `run`, if `annotations.destructiveHint === true` AND `config.confirmDestructive` AND the client advertises `elicitation`, the server issues an elicitation with a boolean `confirm` field built from `confirmMessage(args)`; anything other than `accept` + `confirm === true` returns the Cancelled Result and skips `run`. Destructive tools' advertised output schema is their declared schema widened by `withCancellation` (all declared fields optional + `cancelled`/`message`, passthrough) — not a Zod union, because tool output schemas must be objects.
+
+**Confirmation Prompt** (`confirmMessage(args)` → string, FR-009a)
+
+| Element | Rule | Example (`kratos_extend_session`) |
+|---|---|---|
+| Action | names what will happen | `Extend session <id> beyond its current expiry?` |
+| Targets | every identifier in the validated args (identity ID, session ID, credential `type (identifier)`) | `<session uuid>` |
+| Consequence | user-visible effect, when one exists | `This widens the user's access window.` |
+| Elicited field | exactly one boolean `confirm` | — |
+| Decline | anything but `accept` + `confirm === true` → `{ cancelled: true, message: "Cancelled by user" }` | — |
 
 ## Wire structures
 
@@ -61,6 +71,16 @@ error:    { content: [{type:"text", text: JSON {error: McpToolError}}], isError:
 
 `McpToolError` = `{ code, message, kratosStatus?, kratosCode?, suggestion? }` (unchanged from feature 001).
 
+**Destructive tool outputs** (declared shape, then widened by `withCancellation`):
+
+| Schema | Fields | Used by |
+|---|---|---|
+| `MutationResult` | `success: true`, `message` | `kratos_delete_identity`, `kratos_delete_identity_credential`, `kratos_disable_session` |
+| `DeleteIdentitySessionsOutput` | `MutationResult` + `sessionsExisted: boolean` | `kratos_delete_identity_sessions` |
+| `SetIdentityStateOutput` | `id`, `state?`, `sessionsRevoked: boolean` (passthrough of the patched identity) | `kratos_set_identity_state` |
+| `SessionSummary` | see below | `kratos_extend_session` |
+| `IdentitySummary` (passthrough) | the updated identity | `kratos_update_identity`, `kratos_patch_identity` |
+
 ### Pagination
 
 | Structure | Fields |
@@ -68,7 +88,7 @@ error:    { content: [{type:"text", text: JSON {error: McpToolError}}], isError:
 | `PaginationInput` | `pageSize` int 1–100 (default 20), `pageToken?` string |
 | `PaginatedOutput<T>` | `items: T[]`, `count` int, `nextPageToken?` string |
 | `ScanSummary` | `pagesScanned` int, `truncated` bool, `nextPageToken?` string |
-| `MaxPagesInput` | `maxPages?` int 1–1000 (default = `config.maxScanPages`) |
+| `MaxPagesInput` (`MaxPagesInputSchema`) | `maxPages?` int 1–1000 (default = `config.maxScanPages`), `pageToken?` string (resume a truncated scan from its `nextPageToken`) — extended by both analytics inputs; `kratos_list_sessions` reuses only `maxPages` alongside `PaginationInput` |
 
 `nextPageToken` is parsed from the Kratos `Link: <…page_token=X…>; rel="next"` response header; absent on the last page. Cursors are opaque and instance-bound.
 
@@ -125,7 +145,7 @@ Read failures throw (→ JSON-RPC error), never return an error body as content.
 
 ## Logging
 
-`LogEntry = { timestamp, level, message, correlationId?, tool?, resource?, durationMs?, error?: {code?, message?}, ...context }` written as JSON lines to stderr. A sink forwards `warn`/`error` entries to the client via `logging/message`; `logging/setLevel` adjusts the minimum level. No traits, credentials, or tokens are ever logged.
+`LogEntry = { timestamp, level, message, correlationId?, tool?, resource?, durationMs?, error?: {code?, message?}, ...context }` written as JSON lines to stderr. A sink forwards `warn`/`error` entries to the client via `logging/message`; `logging/setLevel` adjusts the minimum level. Per invocation: one start entry (`tool`, `correlationId`) and exactly one completion entry — `Tool completed`, `Tool failed` (+ `error.code`/`error.message`) or `Tool cancelled by user` — each with `tool`, `correlationId`, `durationMs` (FR-024a, FR-009b). No traits, credentials, or tokens are ever logged (FR-012a; asserted by the invocation-trace suite in `tests/unit/server.test.ts`).
 
 ### Session revocation (`revokeAllSessions`)
 

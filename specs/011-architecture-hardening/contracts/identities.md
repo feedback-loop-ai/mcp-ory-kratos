@@ -12,7 +12,7 @@
 
 **Description**
 
-> Create up to 100 identities in one request (bulk import). Items succeed or fail independently: each result reports action 'create' (with the new identity ID) or 'error' (with Kratos error detail), plus a succeeded/failed summary. Supply a patchId per item to correlate results.
+> Create up to 100 identities in one request (bulk import). Items succeed or fail independently: each result reports action 'create' (with the new identity ID) or 'error' (with Kratos error detail), plus a succeeded/failed summary. Supply a patchId per item to correlate results. Example: {"identities": [{"create": {"schemaId": "default", "traits": {"email": "jane.doe@example.com"}}}]}.
 
 **Input schema (JSON Schema)**
 
@@ -344,7 +344,7 @@
 
 **Description**
 
-> Create a new identity with the given schema and traits. Optionally set metadata, external_id, organization, pre-verified addresses, and import existing credentials (password hash, OIDC/SAML links). Traits must match the schema.
+> Create a new identity with the given schema and traits. Optionally set metadata, external_id, organization, pre-verified addresses, and import existing credentials (password hash, OIDC/SAML links). Traits must match the schema. Example: {"schemaId": "default", "traits": {"email": "jane.doe@example.com"}}.
 
 **Input schema (JSON Schema)**
 
@@ -620,7 +620,7 @@
 
 **Description**
 
-> Permanently delete an identity together with its credentials, sessions, and addresses. This cannot be undone; consider kratos_set_identity_state with state=inactive to suspend instead.
+> Permanently delete an identity together with its credentials, sessions, and addresses. This cannot be undone; consider kratos_set_identity_state with state=inactive to suspend instead. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615"}.
 
 **Input schema (JSON Schema)**
 
@@ -648,12 +648,16 @@
 {
   "type": "object",
   "properties": {
-    "cancelled": {
+    "success": {
       "type": "boolean",
       "const": true
     },
     "message": {
       "type": "string"
+    },
+    "cancelled": {
+      "type": "boolean",
+      "const": true
     }
   },
   "additionalProperties": true,
@@ -718,12 +722,16 @@
 {
   "type": "object",
   "properties": {
-    "cancelled": {
+    "success": {
       "type": "boolean",
       "const": true
     },
     "message": {
       "type": "string"
+    },
+    "cancelled": {
+      "type": "boolean",
+      "const": true
     }
   },
   "additionalProperties": true,
@@ -828,7 +836,7 @@
 
 **Description**
 
-> Look up an identity by its external_id field (exact match, requires Kratos 25.4.0+). The external_id links an identity to a record in an external system and is unique across all identities. Returns a structured NOT_FOUND error if no identity has the given external_id.
+> Look up an identity by its external_id field (exact match, requires Kratos 25.4.0+). The external_id links an identity to a record in an external system and is unique across all identities. Returns a structured NOT_FOUND error if no identity has the given external_id. Example: {"externalId": "crm-12345"}.
 
 **Input schema (JSON Schema)**
 
@@ -1074,7 +1082,7 @@
 
 **Description**
 
-> List the identity schemas configured in Kratos (ID plus JSON Schema). Use this to discover valid schemaId values and required traits before creating identities.
+> List the identity schemas configured in Kratos (ID plus JSON Schema). Use this to discover valid schemaId values and required traits before creating identities. Example: {}.
 
 **Input schema (JSON Schema)**
 
@@ -1138,7 +1146,7 @@
 
 **Description**
 
-> Partially update an identity with JSON Patch operations (add/remove/replace on paths like /traits/email, /state, /metadata_admin/role). Use this to change specific fields without replacing the whole identity.
+> Partially update an identity with JSON Patch operations (add/remove/replace on paths like /traits/email, /state, /metadata_admin/role). Use this to change specific fields without replacing the whole identity. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "patch": [{"op": "replace", "path": "/traits/email", "value": "jane.doe@example.com"}]}.
 
 **Input schema (JSON Schema)**
 
@@ -1240,7 +1248,7 @@
 
 **Description**
 
-> Activate or suspend (inactive) an identity. An inactive identity cannot log in. Set revokeSessions to also delete all of its sessions, logging it out everywhere immediately (session deletion is irreversible).
+> Activate or suspend (inactive) an identity. An inactive identity cannot log in. Set revokeSessions to also delete all of its sessions, logging it out everywhere immediately (session deletion is irreversible). Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "state": "inactive"}.
 
 **Input schema (JSON Schema)**
 
@@ -1282,6 +1290,16 @@
 {
   "type": "object",
   "properties": {
+    "id": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "sessionsRevoked": {
+      "type": "boolean",
+      "description": "True when sessions existed and were deleted; false when there were none"
+    },
     "cancelled": {
       "type": "boolean",
       "const": true
@@ -1302,7 +1320,7 @@
 
 **Description**
 
-> Replace an identity's schema, traits, state, and metadata (PUT semantics). WARNING: fields you omit are cleared - omitting metadataPublic or metadataAdmin removes the existing metadata. Prefer kratos_patch_identity to change individual fields.
+> Replace an identity's schema, traits, state, and metadata (PUT semantics). WARNING: fields you omit are cleared - omitting metadataPublic or metadataAdmin removes the existing metadata. Prefer kratos_patch_identity to change individual fields. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "schemaId": "default", "traits": {"email": "jane.doe@example.com"}, "state": "active"}.
 
 **Input schema (JSON Schema)**
 

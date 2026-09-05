@@ -57,6 +57,10 @@ export const MaxPagesInputSchema = z.object({
     .max(1000)
     .optional()
     .describe("Maximum pages to scan (default from KRATOS_MAX_SCAN_PAGES, 20)"),
+  pageToken: z
+    .string()
+    .optional()
+    .describe("Resume a truncated scan from the nextPageToken of a previous result"),
 });
 
 /** Go duration accepted by Kratos (e.g. 1h, 30m, 1.5h, 1h30m) */
@@ -67,6 +71,20 @@ export const GoDurationSchema = z
 export const MutationResultSchema = z.object({
   success: z.literal(true),
   message: z.string(),
+});
+
+export const SetIdentityStateOutputSchema = z
+  .object({
+    id: z.string(),
+    state: z.string().optional(),
+    sessionsRevoked: z
+      .boolean()
+      .describe("True when sessions existed and were deleted; false when there were none"),
+  })
+  .passthrough();
+
+export const DeleteIdentitySessionsOutputSchema = MutationResultSchema.extend({
+  sessionsExisted: z.boolean().describe("False when the identity had no sessions to delete"),
 });
 
 // =============================================================================

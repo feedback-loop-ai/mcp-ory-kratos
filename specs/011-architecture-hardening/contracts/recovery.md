@@ -12,7 +12,7 @@
 
 **Description**
 
-> Generate an account recovery code for a user. WARNING: the returned code (and accompanying link) is equivalent to full account takeover - anyone who redeems it gains access to the account. Treat it as a secret, never log or share it, and provide it only to the verified account owner verbally or via a secure channel.
+> Generate an account recovery code for a user. WARNING: the returned code (and accompanying link) is equivalent to full account takeover - anyone who redeems it gains access to the account. Treat it as a secret, never log or share it, and provide it only to the verified account owner verbally or via a secure channel. Example: {"identityId": "9f8d7c6b-5a49-4838-9271-605948372615", "expiresIn": "15m"}.
 
 **Input schema (JSON Schema)**
 
@@ -86,7 +86,7 @@
 
 **Description**
 
-> Generate an account recovery link for a user who cannot complete self-service recovery. WARNING: the returned link is equivalent to full account takeover - anyone who opens it gains access to the account. Treat it as a secret, never log or share it, and deliver it only to the verified account owner via a secure channel.
+> Generate an account recovery link for a user who cannot complete self-service recovery. WARNING: the returned link is equivalent to full account takeover - anyone who opens it gains access to the account. Treat it as a secret, never log or share it, and deliver it only to the verified account owner via a secure channel. Example: {"identityId": "9f8d7c6b-5a49-4838-9271-605948372615", "expiresIn": "1h"}.
 
 **Input schema (JSON Schema)**
 

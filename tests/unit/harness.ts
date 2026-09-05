@@ -14,6 +14,7 @@ import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { vi } from "vitest";
 import type { Config } from "../../src/config";
 import type { KratosClients } from "../../src/kratos/client";
+import type { LogEntry } from "../../src/logging/logger";
 import { createServer } from "../../src/server";
 
 export type Mock = ReturnType<typeof vi.fn>;
@@ -43,7 +44,7 @@ export function createClientStubs(): ClientStubs {
 export const BASE_CONFIG: Config = {
   kratosAdminUrl: "http://kratos.test:4434",
   auth: { type: "none" },
-  logLevel: "error",
+  logLevel: "trace",
   timeoutMs: 5000,
   toolsets: ["identities", "sessions", "courier", "recovery", "health", "analytics"],
   readOnly: false,
@@ -55,6 +56,8 @@ export const BASE_CONFIG: Config = {
 export interface Harness {
   client: Client;
   stubs: ClientStubs;
+  /** Every log entry the server emitted (all levels; logger runs at trace in the harness) */
+  logs: LogEntry[];
   /** Set to control the elicitation answer; default accepts */
   elicit: {
     handler: (req: ElicitRequest) => ElicitResult | Promise<ElicitResult>;
@@ -95,7 +98,9 @@ export async function startHarness(
 ): Promise<Harness> {
   const stubs = createClientStubs();
   const config = { ...BASE_CONFIG, ...overrides };
-  const { server } = createServer(config, stubs as unknown as KratosClients);
+  const { server, logger } = createServer(config, stubs as unknown as KratosClients);
+  const logs: LogEntry[] = [];
+  logger.addSink((entry) => logs.push(entry));
 
   const elicit: Harness["elicit"] = {
     handler: () => ({ action: "accept", content: { confirm: true } }),
@@ -131,6 +136,7 @@ export async function startHarness(
   return {
     client,
     stubs,
+    logs,
     elicit,
     callTool,
     close: async () => {

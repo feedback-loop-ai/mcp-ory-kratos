@@ -29,6 +29,7 @@ MCP server enabling AI assistants to manage Ory Kratos identities, sessions, and
   - [Destructive Tools and Confirmation](#destructive-tools-and-confirmation)
   - [Resources](#resources)
 - [Usage Examples](#usage-examples)
+- [Breaking changes in 0.3.0](#breaking-changes-in-030)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -306,7 +307,7 @@ Every tool declares an `outputSchema` and returns its result as `structuredConte
 
 List tools take `pageSize` (1-100, default 20) and `pageToken`, and return `{ items, count, nextPageToken }`. `nextPageToken` is absent on the last page; pass it back as `pageToken` to continue. Tokens are opaque cursors bound to the Kratos instance.
 
-Tools that walk many pages (analytics, `kratos_list_sessions` with `filter`) accept `maxPages` (default `KRATOS_MAX_SCAN_PAGES`) and return `pagesScanned` and `truncated`. When `truncated` is true the page cap was hit; raise `maxPages` or resume from the returned `nextPageToken`.
+Tools that walk many pages (analytics, `kratos_list_sessions` with `filter`) accept `maxPages` (default `KRATOS_MAX_SCAN_PAGES`) and return `pagesScanned` and `truncated`. When `truncated` is true the page cap was hit; raise `maxPages` or pass the returned `nextPageToken` back as `pageToken` to resume from the first unscanned page (both analytics tools accept `pageToken`; an analytics aggregate then covers only the resumed range).
 
 ### Credential Redaction
 
@@ -361,6 +362,21 @@ What authentication methods are users using? Show session analytics.
 ```
 Create a recovery link for user with ID abc-123
 ```
+
+## Breaking changes in 0.3.0
+
+0.3.0 is a minor bump (the package is pre-1.0) that changes several contracts. Update clients and scripts as follows:
+
+| Contract | 0.2.0 | 0.3.0 | Migration |
+|---|---|---|---|
+| `kratos_list_sessions` input | `limit` | `pageSize` (1-100, default 20) + `pageToken`; `maxPages` when `filter` is set | Rename `limit` to `pageSize`; there is no alias. Pass `nextPageToken` back as `pageToken` to continue |
+| `kratos_get_identity` credentials | `includeCredentials: true` returned raw credential `config` | `includeCredential: ["password", "oidc", ...]` is canonical; the boolean is accepted as a deprecated "all types" alias (removed no earlier than 1.0.0). The `config` of secret-bearing types is redacted to `"[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]"` by default | Switch to `includeCredential`; set `KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1` only where the client context may hold secrets |
+| `kratos_batch_patch_identities` result | `{ results: [{ index, identityId, ... }], summary }` | `{ results: [{ action: "create" \| "error" \| "unknown", identity?, patchId?, error? }], summary: { total, succeeded, failed } }` (Kratos SDK field names) | Read `identity.id` instead of `identityId`; correlate by `patchId`; `summary.total` is new |
+| Destructive tools (update, patch, set state, extend/disable session, delete identity/credential/sessions) | always returned their result | may return `{ cancelled: true, message: "Cancelled by user" }` as a *success* result when the operator declines the confirmation prompt; no Kratos call is made | Check `cancelled` before reading the payload; do not retry on it |
+| Server version over MCP | hard-coded `0.1.0` | equals the `package.json` version (`0.3.0`) | Clients that pinned `0.1.0` in checks should compare against the package version |
+| Runtime | Node >= 18 | Node >= 20 | Upgrade Node |
+
+Additive changes (no action needed): every tool now carries a title, MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint: false`), an output schema and `structuredContent`; list tools return `{ items, count, nextPageToken? }`; `kratos_delete_identity_sessions` returns `sessionsExisted`, `kratos_set_identity_state` returns `sessionsRevoked`; new env vars `KRATOS_TOOLSETS`, `KRATOS_READ_ONLY`, `KRATOS_CONFIRM_DESTRUCTIVE`, `KRATOS_ALLOW_CREDENTIAL_EXPOSURE`, `KRATOS_MAX_SCAN_PAGES` are all optional.
 
 ## Troubleshooting
 

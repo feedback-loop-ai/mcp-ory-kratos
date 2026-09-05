@@ -12,12 +12,12 @@ Fix the two silent-correctness defects (list tools never return a cursor; filter
 **Language/Version**: TypeScript 5.9 (strict mode) on Bun 1.3.x (`packageManager: bun@1.3.3`); published bundle targets Node ≥ 20 (`engines.node >=20.0.0`, `#!/usr/bin/env node`)
 **Primary Dependencies**: @modelcontextprotocol/sdk ^1.30.0, @ory/kratos-client ^26.2.0, zod ^3.25.x, axios ^1.20 (override); dev: vitest ^4, @vitest/coverage-v8 ^4, @biomejs/biome ^2.5, typescript ^5.9
 **Storage**: N/A (stateless proxy to Kratos Admin API; no per-call state survives the request)
-**Testing**: Unit — Vitest via an in-memory MCP harness (`tests/unit/harness.ts`: real `createServer` + `InMemoryTransport` + Proxy-backed `vi.fn()` Kratos stubs), 15 files / 215 tests. Integration — `tests/api/` against `docker compose` Kratos v26.2.0 (`dsn: memory`), files serial, includes `mcp-e2e.test.ts` driving the server over stdio through a real `Client`
+**Testing**: Unit — Vitest via an in-memory MCP harness (`tests/unit/harness.ts`: real `createServer` + `InMemoryTransport` + Proxy-backed `vi.fn()` Kratos stubs + captured log entries), 16 files / 224 tests. Integration — `tests/api/` against `docker compose` Kratos v26.2.0 (`dsn: memory`), files serial, includes `mcp-e2e.test.ts` driving the server over stdio through a real `Client`
 **Target Platform**: Linux/macOS server-side; stdio MCP transport only (Claude Code, VS Code, any MCP client)
 **Project Type**: Single project (`src/`, `tests/` at repository root)
 **Performance Goals**: Unit suite < 5 s (Constitution VI; actual ≈ 0.3 s + coverage); plain list tools = exactly one upstream call; scanning tools ≤ `maxPages` upstream calls (default `KRATOS_MAX_SCAN_PAGES=20`, hard max 1000); no additional latency on the non-destructive path (confirmation only adds one client round-trip for destructive tools when elicitation is supported)
 **Constraints**: Stateless; no retries (feature 001 fail-fast decision stands, FR-026 adds timeouts only); page cursors opaque and never constructed by the server (R1/R4); secret-bearing credential `config` redacted by default (FR-010); every tool registered through `defineTool` — no direct `server.tool`/`registerTool` calls in tool files (FR-009, FR-032); hidden tools indistinguishable from absent tools (FR-007/008)
-**Scale/Scope**: 27 tools across 6 toolsets, 3 resources; `src/` ≈ 3.0k LOC (was ≈ 3.5k on `main`); 18 `src/` files touched (5 new, 1 deleted); 26 test files touched; CI adds `audit` and `integration` jobs
+**Scale/Scope**: 27 tools across 6 toolsets, 3 resources; `src/` ≈ 3.0k LOC (was ≈ 3.5k on `main`); 19 `src/` files touched (4 new — `server.ts`, `tools/define.ts`, `kratos/pagination.ts`, `kratos/sessions.ts` — 1 deleted); 33 test files touched; CI adds `audit` and `integration` jobs
 
 ## Constitution Check
 
@@ -25,13 +25,14 @@ Fix the two silent-correctness defects (list tools never return a cursor; filter
 
 | Principle / Section | Check | Status |
 |---|---|---|
-| I. AI-Native Development | Every tool has Zod input + output schema, `structuredContent`, title, annotations, action-oriented description (destructive tools state irreversibility; scanners state the cap). Server `instructions` explain IDs, cursors, redaction, destructive hints (FR-021, FR-022). Errors keep the structured `McpToolError` envelope. Stateless: nothing survives a call | PASS |
-| II. Spec-Driven Development | spec.md (17 clarifications across two clarify rounds) → research.md (R1–R10) → data-model.md / contracts/ / quickstart.md → this plan → tasks.md. Roles distinct in artifacts | PASS |
+| I. AI-Native Development | Every tool has Zod input + output schema, `structuredContent`, title, annotations, action-oriented description ending in a usage example `Example: {...}` (FR-006a; destructive tools state irreversibility; scanners state the cap and page size). Destructive tools declare their real output shape (`{success, message}`, `sessionsExisted`, `sessionsRevoked`) rather than a generic passthrough (FR-021). Server `instructions` explain IDs, cursors, redaction, destructive hints (FR-021, FR-022). Errors keep the structured `McpToolError` envelope. Stateless: nothing survives a call | PASS |
+| II. Spec-Driven Development | spec.md (37 clarifications across three clarify rounds) → research.md (R1–R10) → data-model.md / contracts/ / quickstart.md → this plan → tasks.md. Roles distinct in artifacts | PASS |
 | III. Contract-First API Design | contracts/ hold one file per toolset generated from live `tools/list` plus resources.md; every tool maps 1:1 to an `IdentityApi`/`CourierApi`/`MetadataApi` operation or a documented multi-page scan. Breaking changes (`limit`→`pageSize`, batch result shape) are versioned and documented (§ Breaking changes). Error codes unchanged across SDK and raw-HTTP paths (FR-026) | PASS |
+| III (retrospective deviation) | The contracts under `contracts/` were generated from the live server *after* implementation, because this feature was specified retrospectively (tasks.md "Retrospective note"). Justification: the contracts are derived from the same Zod objects in `src/schemas/tools.ts` that the server validates inputs and `structuredContent` against, so they cannot drift from the shipped behaviour; regenerating them is part of T061. Going forward, contracts precede code (Phase 1 before Phase 2) as the constitution requires | PASS (documented exception) |
 | IV. Operational Excellence | Structured JSON logs with correlation IDs; warn/error forwarded via MCP `logging`, level adjustable (FR-024); every Kratos error incl. raw-HTTP timeout mapped (`KratosHttpError` → `mapError`); health/ready/version tools; URL userinfo stripped before logging (FR-012); credential redaction default-on (FR-010); no traits/tokens logged | PASS |
 | V. Simplicity & YAGNI | One registration path replaces ~70 % duplicated scaffolding (SC-009). Every non-thin-proxy piece cites an FR (§ Complexity Tracking). No retries, no per-type redaction policy, no HTTP transport, no SDK v2, no prompts | PASS |
 | VI. Fast Feedback Loops | Unit run hermetic, ≈ 0.3 s test time (SC-010); Bun for install/run/build; Biome single tool for lint + format; vitest unit mode skips Kratos pre-flight; `docker compose up -d --wait` is the single local integration command (SC-007) | PASS |
-| VII. Type Safety & Validation | `tsc --noEmit` over `src/` and `tests/` (`tsconfig.test.json`); Zod validates all inputs incl. Go-duration `expiresIn`, toolset names, custom headers (FR-013, FR-027); SDK validates `structuredContent` against `outputSchema`; config parsed once at startup and fails fast; unit tests cover malformed inputs and upstream error shapes | PASS |
+| VII. Type Safety & Validation | `tsc --noEmit` over `src/` and `tests/` (`tsconfig.test.json`); zero explicit `any` in `src/` (the `defineTool` callback is widened via `unknown as ToolCallback<I>`, not `any`); Zod validates all inputs incl. Go-duration `expiresIn`, toolset names, custom headers (FR-013, FR-027); SDK validates `structuredContent` against `outputSchema`; config parsed once at startup and fails fast; unit tests cover malformed inputs and upstream error shapes | PASS |
 | Technology Stack lock | Bun 1.x, TS 5.x strict, @ory/kratos-client, Zod 3.25, Vitest, Biome — all as pinned. **Deviation**: table pins `@modelcontextprotocol/sdk ^1.25.x`; repo is on `^1.30.0` (still 1.x, required by FR-032 to close GHSA-345p-7cg4-v4c7). Table names `bun.lockb`; the repo commits the text `bun.lock` (Bun ≥ 1.2 default; CI cache key already hashes `bun.lock`). Both are non-semantic drifts; **resolved by constitution PATCH 1.1.0 → 1.1.1** (`.specify/memory/constitution.md`, 2026-09-05) which updates the stack table | PASS |
 | Quality Gates | Lint (src + tests), typecheck (src + tests), unit tests with enforced coverage thresholds 80/80/70/80, integration against Kratos v26.2.0, `bun audit --audit-level=high` — all mandatory in CI; Dependabot weekly for bun + GitHub Actions (FR-031) | PASS |
 
@@ -44,7 +45,7 @@ Fix the two silent-correctness defects (list tools never return a cursor; filter
 ```text
 specs/011-architecture-hardening/
 ├── plan.md              # This file
-├── spec.md              # 6 user stories, FR-001…FR-034, SC-001…SC-010, 17 clarifications
+├── spec.md              # 6 user stories, FR-001…FR-034, SC-001…SC-010, 37 clarifications
 ├── research.md          # Phase 0 — R1 Kratos release check … R10 v26.2.0 drift
 ├── data-model.md        # Phase 1 — Config, ToolDefinition, presets, wire structures, resources
 ├── quickstart.md        # Phase 1 — operator flows per user story, breaking-change table
@@ -71,11 +72,12 @@ src/
 ├── kratos/
 │   ├── client.ts               # MODIFIED: KratosHttpError; raw GET honours AbortSignal.timeout(config.timeoutMs)
 │   ├── pagination.ts           # NEW: extractPageToken / nextPageTokenOf (Link header), scanPages (capped walker), inTimeRange
+│   ├── sessions.ts             # NEW: revokeAllSessions — deleteIdentitySessions treating 404 (v1.x) / 400 (v26.x) "no sessions" as success, returns whether sessions existed (FR-017a)
 │   └── types.ts                # MODIFIED: CREDENTIAL_TYPES, ALL_CREDENTIAL_TYPES, SENSITIVE_CREDENTIAL_TYPES, redactCredentials()
 ├── logging/logger.ts           # MODIFIED: addSink() + setLevel() for the MCP logging bridge
 ├── resources/schemas.ts        # MODIFIED: registerResource; ResourceTemplate with list + complete; throw on error; connection resource strips userinfo, reports toolsets/readOnly
 ├── schemas/
-│   ├── tools.ts                # MODIFIED: PaginationInput/PaginatedOutput/ScanSummary/MaxPages; includeCredential lists; identity import body; set-state, schema tools; recovery returnTo/flowType + Go-duration regex; all output schemas
+│   ├── tools.ts                # MODIFIED: PaginationInput/PaginatedOutput/ScanSummary/MaxPagesInput (maxPages + pageToken resume); includeCredential lists; identity import body; set-state, schema tools; recovery returnTo/flowType + Go-duration regex; all output schemas incl. MutationResult, SetIdentityStateOutput, DeleteIdentitySessionsOutput
 │   └── resources.ts            # DELETED: URIs moved to resources/schemas.ts; resources no longer return error bodies
 └── tools/
     ├── define.ts               # NEW: ToolContext, ToolDefinition, defineTool, annotation presets, CANCELLED, withCancellation
@@ -99,11 +101,11 @@ tests/
 │   ├── mcp-e2e.test.ts         # NEW: stdio e2e — tools/list annotations, list+cursor, create/get/redaction, set-state, schemas, resources, error envelope
 │   └── courier/health/identity/recovery/session.test.ts   # MODIFIED: v26.2.0 status drift (R10), serial-safe fixtures
 └── unit/
-    ├── harness.ts              # NEW: startHarness(config overrides, {elicitation}) → real server + InMemoryTransport + stubs
+    ├── harness.ts              # NEW: startHarness(config overrides, {elicitation}) → real server + InMemoryTransport + stubs + captured log entries
     ├── identity-tools.test.ts, session-tools.test.ts, courier-tools.test.ts,
     │   recovery-tools.test.ts, health-tools.test.ts, analytics-tools.test.ts   # NEW: one file per toolset, every tool via client.callTool
-    ├── server.test.ts          # NEW: gating (toolsets/read-only → hidden + invalid-params), elicitation accept/decline/absent, logging bridge, resources
-    ├── config.test.ts, client.test.ts, pagination.test.ts   # NEW
+    ├── server.test.ts          # NEW: gating (toolsets/read-only → hidden + invalid-params), elicitation accept/decline/absent, logging bridge, resources, invocation trace (FR-024a) + no-secrets-in-logs (FR-012a)
+    ├── config.test.ts, client.test.ts, pagination.test.ts, sessions-helper.test.ts   # NEW (sessions-helper: revokeAllSessions 404/400/other)
     ├── batch-patch-identities.test.ts, identity-external-id.test.ts, analytics.test.ts,
     │   credential-types.test.ts, schemas.test.ts   # MODIFIED: ported from server.tool() stubs to the harness / pure helpers
 
@@ -125,7 +127,7 @@ biome.json                      # MODIFIED: includes tests/**; test-only rule ov
 
 ### D1: `defineTool` — single registration path with enforced confirmation (US6, FR-009, FR-021, FR-006)
 
-`src/tools/define.ts` wraps `McpServer.registerTool`. A `ToolDefinition` supplies name, title, description, toolset, `inputSchema`, optional `outputSchema`, `annotations`, optional `confirmMessage(args)` and `run(args, {log})`. The wrapper adds: `openWorldHint:false`, correlated logging with duration, `mapError` on throw (error result has `isError:true` and **no** `structuredContent`, because the SDK validates structured output against the schema), `structuredContent` when an output schema exists, gating (D3) and confirmation (D4). Registration **throws** when `destructiveHint === true` and no `confirmMessage` is given — a destructive tool cannot opt out (spec clarification; commit e9bfcd0). Because a destructive tool may return `CANCELLED` instead of its declared output, its advertised `outputSchema` is `withCancellation(schema)` = declared fields made optional + `cancelled`/`message` + passthrough (tool output schemas must be objects, so a Zod union is not usable). Five annotation presets (`READ_ONLY`, `CREATE`, `UPDATE_IDEMPOTENT`, `UPDATE`, `DESTRUCTIVE`) encode the clarified hint matrix.
+`src/tools/define.ts` wraps `McpServer.registerTool`. A `ToolDefinition` supplies name, title, description, toolset, `inputSchema`, optional `outputSchema`, `annotations`, optional `confirmMessage(args)` and `run(args, {log})`. The wrapper adds: `openWorldHint:false`, correlated logging with duration, `mapError` on throw (error result has `isError:true` and **no** `structuredContent`, because the SDK validates structured output against the schema), `structuredContent` when an output schema exists, gating (D3) and confirmation (D4). Registration **throws** when `destructiveHint === true` and no `confirmMessage` is given — a destructive tool cannot opt out (spec clarification; commit e9bfcd0). Because a destructive tool may return `CANCELLED` instead of its declared output, its advertised `outputSchema` is `withCancellation(schema)` = declared fields made optional + `cancelled`/`message` + passthrough (tool output schemas must be objects, so a Zod union is not usable). Destructive tools nevertheless declare their real shape before widening (`MutationResultSchema`, `DeleteIdentitySessionsOutputSchema` with `sessionsExisted`, `SetIdentityStateOutputSchema` with `sessionsRevoked`, `SessionSummarySchema` for extend) — a generic passthrough would tell the agent nothing (FR-021). The SDK's callback type is satisfied by widening through `unknown as ToolCallback<I>`; `define.ts` carries no explicit `any` (Constitution VII). Five annotation presets (`READ_ONLY`, `CREATE`, `UPDATE_IDEMPOTENT`, `UPDATE`, `DESTRUCTIVE`) encode the clarified hint matrix.
 *Alternatives*: per-tool `confirm: true` flag (rejected — a forgotten flag silently drops the human-in-the-loop; the first cut of 976cd06 did this and was replaced); a base class/decorator (rejected — one function is enough, YAGNI).
 
 ### D2: Full Zod objects, not `.shape`, passed to the SDK (FR-021, R2)
@@ -146,11 +148,11 @@ Before `run`, if destructive AND `config.confirmDestructive` AND `server.server.
 ### D5: Redaction as a `types.ts` helper applied in tools, one switch (FR-010, FR-011, SC-005, R5)
 
 `redactCredentials(identity, allowExposure)` replaces `config` of `SENSITIVE_CREDENTIAL_TYPES` with the fixed marker `[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]`, keeps `type`/`identifiers`/`version`/timestamps, and leaves absent `config` absent. Applied in `identity.ts` to get-by-id and each list item — the only two tools that accept `includeCredential`; get-by-external-id never requests credentials, so nothing to redact. A single `allowCredentialExposure` flag; `includeCredential: string[]` (mirrors Kratos `include_credential`) is the canonical scope control, with boolean `includeCredentials` kept on `kratos_get_identity` as a deprecated "all types" alias (explicit list wins when both are given).
-*Alternatives*: redact inside `defineTool` generically (rejected — would need output-shape introspection; only three tools carry credentials); per-type policy (rejected — clarification: YAGNI).
+*Alternatives*: redact inside `defineTool` generically (rejected — would need output-shape introspection; only two tools carry credentials, FR-010a); per-type policy (rejected — clarification: YAGNI).
 
 ### D6: `Link`-header pagination helper, `scanPages`, cap semantics (FR-001…FR-005, SC-001, SC-002, R4)
 
-`src/kratos/pagination.ts`: `nextPageTokenOf(response)` parses `rel="next"` `page_token` from the Axios `link` header — the SDK exposes no body field. Plain list tools make one call and return `{items, count, nextPageToken?}`. Multi-page tools use `scanPages(fetchPage, {maxPages, startToken})`, which stops early when the collection ends (no `Link` or empty page → `truncated:false`) and reports `truncated:true` with a resume `nextPageToken` only when the cap was hit with more remaining. `kratos_list_sessions` with a filter walks upstream pages of **100** (Kratos list maximum) independent of `pageSize`, which counts matches to return; a `nextPageToken` is returned whenever more upstream pages remain, `truncated` only when the cap stopped it (clarification). Analytics walk pages of 250 (Kratos allows larger pages on these endpoints; kept from the pre-existing code) and skip `expand:["devices"]` unless `includeDevices` (FR-004). `maxPages` per call defaults to `config.maxScanPages` (`KRATOS_MAX_SCAN_PAGES`, 20).
+`src/kratos/pagination.ts`: `nextPageTokenOf(response)` parses `rel="next"` `page_token` from the Axios `link` header — the SDK exposes no body field. Plain list tools make one call and return `{items, count, nextPageToken?}`. Multi-page tools use `scanPages(fetchPage, {maxPages, startToken})`, which stops early when the collection ends (no `Link` or empty page → `truncated:false`) and reports `truncated:true` with a resume `nextPageToken` only when the cap was hit with more remaining. `kratos_list_sessions` with a filter walks upstream pages of **100** (Kratos list maximum) independent of `pageSize`, which counts matches to return; a `nextPageToken` is returned whenever more upstream pages remain, `truncated` only when the cap stopped it (clarification). Analytics walk pages of 250 (Kratos allows larger pages on these endpoints; kept from the pre-existing code), accept `pageToken` (passed to `scanPages` as `startToken`) so a truncated aggregate can be resumed (FR-003), and skip `expand:["devices"]` unless `includeDevices` (FR-004). `maxPages` per call defaults to `config.maxScanPages` (`KRATOS_MAX_SCAN_PAGES`, 20).
 *Alternatives*: offset pagination (deprecated in Kratos); unbounded scan (rejected — unbounded upstream load; clarification chose cap + resume).
 
 ### D7: `createServer` factory vs CLI entry (FR-022, FR-024, FR-025, FR-030)
@@ -180,7 +182,7 @@ The `/version` path bypasses the SDK (proxy path mismatch, feature 001). It now 
 
 ### D12: CI integration job (FR-029, FR-034, SC-007, R6, R10)
 
-`docker-compose.yml` runs `oryd/kratos:${KRATOS_VERSION:-v26.2.0}` with `serve --dev --watch-courier`, `dsn: memory` (auto-migrates, no migrate container), config + schema mounted from `tests/kratos/`, healthcheck on `/health/ready`. CI: `docker compose up -d --wait --wait-timeout 90`, then `bun run test:api` with `KRATOS_ADMIN_URL`, `KRATOS_EXPECTED_VERSION`, `KRATOS_AUTH_TYPE` set, Kratos logs dumped on failure, compat JSON uploaded. `fileParallelism:false` because SQLite is single-writer ("concurrent update" failures in ~1 of 3 parallel runs). `global-setup.ts` now only sets a key from `.env.test.local` when the real env var is undefined (previously the file overwrote CI's variables). The suite was relaxed where v26.2.0 differs from v1.x: `DELETE …/sessions` on an identity with no sessions returns 400 (was 404), `log.level: warning`. The job `needs: [lint, typecheck]` so a broken build does not spend container minutes.
+`docker-compose.yml` runs `oryd/kratos:${KRATOS_VERSION:-v26.2.0}` with `serve --dev --watch-courier`, `dsn: memory` (auto-migrates, no migrate container), config + schema mounted from `tests/kratos/`, healthcheck on `/health/ready`. CI: `docker compose up -d --wait --wait-timeout 90`, then `bun run test:api` with `KRATOS_ADMIN_URL`, `KRATOS_EXPECTED_VERSION`, `KRATOS_AUTH_TYPE` set, Kratos logs dumped on failure, compat JSON uploaded. `fileParallelism:false` because SQLite is single-writer ("concurrent update" failures in ~1 of 3 parallel runs). `global-setup.ts` now only sets a key from `.env.test.local` when the real env var is undefined (previously the file overwrote CI's variables). Where v26.2.0 differs from v1.x: `DELETE …/sessions` on an identity with no sessions returns 400 (was 404) — the *server* absorbs both statuses in `src/kratos/sessions.ts::revokeAllSessions` and reports success with `sessionsRevoked` / `sessionsExisted` (FR-017a), so the integration suite no longer has to tolerate either status itself (it originally did, R10); `log.level: warning`. The job `needs: [lint, typecheck]` so a broken build does not spend container minutes.
 *Alternatives*: GitHub `services:` container (rejected — config must be mounted before start; compose is identical locally); Postgres sidecar (rejected — slower, unnecessary for a serial suite).
 
 ### D13: Dependency overrides and pins (FR-031, FR-032, SC-008, R8)
@@ -189,7 +191,7 @@ The `/version` path bypasses the SDK (proxy path mismatch, feature 001). It now 
 
 ### D14: Coverage measurement fix and thresholds (FR-028, SC-006, R9)
 
-`tests/vitest.config.ts` has `root: "./tests"`, so the old `src/**` include matched nothing and CI printed `Unknown%`. Fixed with `allowExternal: true` + `include: ["**/src/**/*.ts"]`, `exclude` for `src/index.ts` (CLI glue, covered by e2e) and `node_modules`; `reportOnFailure: true`; thresholds lines 80 / functions 80 / branches 70 / statements 80 enforced by `test:unit` (`--coverage.enabled`). Baseline after this feature: 90.8 % lines, 88.5 % functions, 78.9 % branches. CI's "check for unit tests" conditional was removed — the unit job always runs.
+`tests/vitest.config.ts` has `root: "./tests"`, so the old `src/**` include matched nothing and CI printed `Unknown%`. Fixed with `allowExternal: true` + `include: ["**/src/**/*.ts"]`, `exclude` for `src/index.ts` (CLI glue, covered by e2e) and `node_modules`; `reportOnFailure: true`; thresholds lines 80 / functions 80 / branches 70 / statements 80 enforced by `test:unit` (`--coverage.enabled`). Baseline after this feature (`bun run test:unit`, "All files" row, 16 files / 224 tests): 89.75 % statements, 78.91 % branches, 89.36 % functions, 90.82 % lines — every metric above its threshold. CI's "check for unit tests" conditional was removed — the unit job always runs.
 
 ### D15: Biome and TypeScript scope extended to tests (FR-031)
 
@@ -199,7 +201,7 @@ The `/version` path bypasses the SDK (proxy path mismatch, feature 001). It now 
 
 ### Phase 0 — Research (`research.md`, complete)
 
-R1 Kratos release ceiling (v26.2.0; unreleased deltas recorded), R2 SDK 1.30 surface + `.shape` finding, R3 exposure-control patterns, R4 `Link`-header cursors, R5 credential exposure, R6 CI Kratos in a container, R7 unit-test strategy, R8 vulnerabilities, R9 coverage defect, R10 v26.2.0 behavioural drift. No `NEEDS CLARIFICATION` remains; the 13 spec clarifications are encoded in D1–D6.
+R1 Kratos release ceiling (v26.2.0; unreleased deltas recorded), R2 SDK 1.30 surface + `.shape` finding, R3 exposure-control patterns, R4 `Link`-header cursors, R5 credential exposure, R6 CI Kratos in a container, R7 unit-test strategy, R8 vulnerabilities, R9 coverage defect, R10 v26.2.0 behavioural drift. No `NEEDS CLARIFICATION` remains; the 37 spec clarifications are encoded in D1–D6 and D12 (session revocation), with the observability and description-example ones landing in D1.
 
 ### Phase 1 — Design & contracts (complete)
 
@@ -212,7 +214,8 @@ See `tasks.md` (`/speckit.tasks`). Story → decision map used to order it:
 | Story | Delivered by | Verified by |
 |---|---|---|
 | US1 Pagination | D6, D2 (schemas), D7 (instructions) | `pagination.test.ts`, `session-tools.test.ts`, `analytics-tools.test.ts`, e2e list+cursor |
-| US2 Safety | D1, D3, D4, D10 | `server.test.ts` (gating, elicit accept/decline/absent), e2e annotations |
+| US2 Safety | D1, D3, D4, D10 | `server.test.ts` (gating, elicit accept/decline/absent, invocation trace FR-024a, no secrets in logs FR-012a), e2e annotations |
+| US4 Session revocation idempotency | D12 (`revokeAllSessions`, FR-017a) | `sessions-helper.test.ts`, `identity-tools.test.ts`, `session-tools.test.ts`, e2e set-state with `revokeSessions` |
 | US3 Redaction | D5, D10 | `identity-tools.test.ts`, e2e create → get redacted |
 | US4 Hidden capabilities | D6 (filters), D5 (`includeCredential`), D9, schemas in `tools.ts` | `identity-tools.test.ts`, `recovery-tools.test.ts`, e2e set-state / schema tools |
 | US5 Quality gates | D11, D12, D13, D14, D15 | CI jobs lint / typecheck / audit / test / integration |
@@ -239,16 +242,16 @@ See `tasks.md` (`/speckit.tasks`). Story → decision map used to order it:
 | `kratos_list_sessions` input | `limit` | `pageSize` (1–100, default 20) + `pageToken`; `maxPages` when `filter` set | FR-005, clarification "no alias" |
 | `kratos_get_identity` credentials | `includeCredentials: true` returns raw `config` | `includeCredential: [...]` canonical; boolean kept as deprecated alias; `config` of sensitive types redacted unless `KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1` | FR-010, FR-011 |
 | `kratos_list_identities` | no credential option | `includeCredential`, plus `previewCredentialsIdentifier`, `…Similar`, `ids`, `organizationId`, `consistency` | FR-014 |
-| `kratos_batch_patch_identities` result | `{results:[{index, identityId, …}], summary}` | `{results:[{action, identity, patchId, error}], summary:{total, succeeded, failed}}` (SDK field names) | quickstart table |
+| `kratos_batch_patch_identities` result | `{results:[{index, identityId, …}], summary}` | `{results:[{action, identity, patchId, error}], summary:{total, succeeded, failed}}` (SDK field names) | FR-016a, README "Breaking changes in 0.3.0", quickstart table |
 | `kratos_delete_identity_credential` | login types only | all Kratos deletable types + optional `identifier` for oidc/saml | FR-015 |
 | Every list tool output | items only | `{items, count, nextPageToken?}` (additive) | FR-001 |
-| Every tool | no annotations / output schema | title + hints + `structuredContent` (additive); destructive tools may return `{cancelled:true}` | FR-006, FR-009, FR-021 |
+| Every tool | no annotations / output schema | title + hints + `structuredContent` (additive); destructive tools may return `{cancelled:true}`; `kratos_delete_identity_sessions` adds `sessionsExisted`, `kratos_set_identity_state` returns `sessionsRevoked` | FR-006, FR-009, FR-017a, FR-021 |
 | Resources | error body in a successful read | JSON-RPC error | FR-023 |
 | Server version | hard-coded `0.1.0` | `package.json` version | FR-025 |
 | Runtime | Node ≥ 18 | Node ≥ 20 | FR-033 |
 | Env vars (new, all optional) | — | `KRATOS_TOOLSETS`, `KRATOS_READ_ONLY`, `KRATOS_CONFIRM_DESTRUCTIVE`, `KRATOS_ALLOW_CREDENTIAL_EXPOSURE`, `KRATOS_MAX_SCAN_PAGES` | data-model.md |
 
-**Release target**: `0.3.0` — a minor bump while pre-1.0, per spec clarification; the breaking rows above go in the release notes and README "Breaking changes" section. Tag via the feature 006 release workflow after merge.
+**Release target**: `0.3.0` — a minor bump while pre-1.0, per spec clarification; the breaking rows above are recorded in `README.md` § "Breaking changes in 0.3.0" (FR-005, FR-016a) and go in the release notes. Tag via the feature 006 release workflow after merge.
 
 ## Follow-ups / Deferred
 

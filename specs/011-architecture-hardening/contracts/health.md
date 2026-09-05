@@ -12,7 +12,7 @@
 
 **Description**
 
-> Check if the Kratos server is alive and accepting requests. Returns alive status.
+> Check if the Kratos server is alive and accepting requests. Returns alive status. Example: {} (no arguments).
 
 **Input schema (JSON Schema)**
 
@@ -54,7 +54,7 @@
 
 **Description**
 
-> Check if the Kratos server is ready to handle requests. Checks database connectivity and other dependencies.
+> Check if the Kratos server is ready to handle requests. Checks database connectivity and other dependencies. Example: {} (no arguments).
 
 **Input schema (JSON Schema)**
 
@@ -96,7 +96,7 @@
 
 **Description**
 
-> Get the version of the Kratos server. Useful for debugging and compatibility checks.
+> Get the version of the Kratos server. Useful for debugging and compatibility checks. Example: {} (no arguments).
 
 **Input schema (JSON Schema)**
 

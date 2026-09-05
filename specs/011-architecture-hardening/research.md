@@ -85,10 +85,10 @@
 
 **Decision**: `coverage.include: ["**/src/**/*.ts"]` with `allowExternal: true` and thresholds 80/80/70/80.
 
-**Rationale**: `tests/vitest.config.ts` sets `root: "./tests"`, so the previous `src/**` glob resolved to `tests/src/**` (non-existent); CI printed `Unknown%` on every run. A `../src/**` form also failed to match; the `**/src/**` form works. Real baseline after this feature: 89.5% lines / 78.9% branches.
+**Rationale**: `tests/vitest.config.ts` sets `root: "./tests"`, so the previous `src/**` glob resolved to `tests/src/**` (non-existent); CI printed `Unknown%` on every run. A `../src/**` form also failed to match; the `**/src/**` form works. Real baseline after this feature (`bun run test:unit`, "All files"): 89.75% statements / 78.91% branches / 89.36% functions / 90.82% lines (plan.md D14 is the single authoritative record).
 
 ## R10: Kratos v26.2.0 behavioural drift found by the integration suite
 
-- `DELETE /admin/identities/{id}/sessions` for an identity with no sessions returns **400** on v26.2.0 (was 404 on v1.x) — test relaxed to accept both.
+- `DELETE /admin/identities/{id}/sessions` for an identity with no sessions returns **400** on v26.2.0 (was 404 on v1.x). The initial fix relaxed the integration test to accept both; **superseded** by server-side idempotency (FR-017a): `src/kratos/sessions.ts::revokeAllSessions` treats 404 and 400 as "no sessions, desired state holds" and reports `sessionsRevoked` / `sessionsExisted`, so tools succeed on either Kratos line and tests assert the server's result rather than the raw status (unit: `tests/unit/sessions-helper.test.ts`; e2e: set-state with `revokeSessions`, T067/T068).
 - Kratos `log.level` accepts `warning`, not `warn`.
 - `GET /admin/identities/schemas` is not a valid path; schemas are at `/admin/schemas` (redirects to public `/schemas`). The SDK handles this.

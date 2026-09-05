@@ -240,7 +240,7 @@ async function fetchSessionAnalytics(
         pageToken,
         expand: includeDevices ? ["devices"] : undefined,
       }),
-    { maxPages: args.maxPages ?? ctx.config.maxScanPages },
+    { maxPages: args.maxPages ?? ctx.config.maxScanPages, startToken: args.pageToken },
   );
 
   for (const session of scan.items) {
@@ -275,7 +275,7 @@ async function fetchCredentialAnalytics(
         pageToken,
         includeCredential: [...CREDENTIAL_TYPES],
       }),
-    { maxPages: args.maxPages ?? ctx.config.maxScanPages },
+    { maxPages: args.maxPages ?? ctx.config.maxScanPages, startToken: args.pageToken },
   );
 
   for (const identity of scan.items) {
@@ -293,7 +293,7 @@ export function registerAnalyticsTools(ctx: ToolContext): void {
     name: "kratos_session_analytics",
     title: "Session analytics",
     description:
-      "Get aggregated session statistics including authentication methods, device types, and browser distribution. Useful for understanding user login patterns. Scans up to maxPages pages of 250 sessions (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages if the scan did not cover all sessions.",
+      'Get aggregated session statistics including authentication methods, device types, and browser distribution. Useful for understanding user login patterns. Scans up to maxPages pages of 250 sessions (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages or pass its nextPageToken as pageToken to continue. Example: {"from": "2026-09-01T00:00:00Z", "includeDevices": false}.',
     toolset: "analytics",
     inputSchema: SessionAnalyticsInputSchema,
     outputSchema: SessionAnalyticsOutputSchema,
@@ -305,7 +305,7 @@ export function registerAnalyticsTools(ctx: ToolContext): void {
     name: "kratos_credential_analytics",
     title: "Credential analytics",
     description:
-      "Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn, passkey, code) are most used, plus MFA adoption (totp/webauthn/lookup_secret) and passwordless adoption (passkey) rates. Code credentials appear only in the distribution because they may be a first or second factor. Scans up to maxPages pages of 250 identities (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages if the scan did not cover all identities.",
+      'Get authentication method adoption statistics showing which credential types (password, OIDC, TOTP, WebAuthn, passkey, code) are most used, plus MFA adoption (totp/webauthn/lookup_secret) and passwordless adoption (passkey) rates. Code credentials appear only in the distribution because they may be a first or second factor. Scans up to maxPages pages of 250 identities (default from KRATOS_MAX_SCAN_PAGES); check `truncated` in the result and raise maxPages or pass its nextPageToken as pageToken to continue. Example: {"includeMfa": true, "maxPages": 50}.',
     toolset: "analytics",
     inputSchema: CredentialAnalyticsInputSchema,
     outputSchema: CredentialAnalyticsOutputSchema,

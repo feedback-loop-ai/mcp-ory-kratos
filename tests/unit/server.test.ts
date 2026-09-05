@@ -204,6 +204,73 @@ describe("server", () => {
   });
 });
 
+describe("invocation trace (FR-024a)", () => {
+  const ID = "9f8d7c6b-5a49-4838-9271-605948372615";
+  let h: Harness;
+  afterEach(async () => {
+    await h?.close();
+  });
+
+  function traceFor(tool: string) {
+    return h.logs.filter((e) => e.tool === tool && /^Tool /.test(e.message));
+  }
+
+  it("logs start + completed with tool, correlationId and durationMs", async () => {
+    h = await startHarness();
+    h.stubs.metadata.isAlive.mockResolvedValue({ data: { status: "ok" } });
+    await h.callTool("kratos_health_alive");
+    const trace = traceFor("kratos_health_alive");
+    expect(trace.map((e) => e.message)).toEqual(["Tool invoked", "Tool completed"]);
+    const ids = new Set(trace.map((e) => e.correlationId));
+    expect(ids.size).toBe(1);
+    expect([...ids][0]).toBeTruthy();
+    expect(typeof trace[1]?.durationMs).toBe("number");
+  });
+
+  it("logs start + failed with error code on upstream failure", async () => {
+    h = await startHarness();
+    h.stubs.identity.getIdentity.mockRejectedValue(httpError(404, "nope"));
+    await h.callTool("kratos_get_identity", { id: ID });
+    const trace = traceFor("kratos_get_identity");
+    expect(trace.map((e) => e.message)).toEqual(["Tool invoked", "Tool failed"]);
+    expect(trace[1]?.error?.code).toBe("NOT_FOUND");
+    expect(typeof trace[1]?.durationMs).toBe("number");
+    expect(trace[0]?.correlationId).toBe(trace[1]?.correlationId);
+  });
+
+  it("logs start + cancelled when confirmation is declined", async () => {
+    h = await startHarness();
+    h.elicit.handler = () => ({ action: "decline" });
+    await h.callTool("kratos_delete_identity", { id: ID });
+    const trace = traceFor("kratos_delete_identity");
+    expect(trace.map((e) => e.message)).toEqual(["Tool invoked", "Tool cancelled by user"]);
+    expect(typeof trace[1]?.durationMs).toBe("number");
+    expect(trace[0]?.correlationId).toBe(trace[1]?.correlationId);
+  });
+
+  it("uses a fresh correlationId per invocation", async () => {
+    h = await startHarness();
+    h.stubs.metadata.isAlive.mockResolvedValue({ data: { status: "ok" } });
+    await h.callTool("kratos_health_alive");
+    await h.callTool("kratos_health_alive");
+    const ids = new Set(traceFor("kratos_health_alive").map((e) => e.correlationId));
+    expect(ids.size).toBe(2);
+  });
+
+  it("never logs identity traits or credentials", async () => {
+    h = await startHarness();
+    h.stubs.identity.createIdentity.mockResolvedValue({ data: { id: ID } });
+    await h.callTool("kratos_create_identity", {
+      schemaId: "default",
+      traits: { email: "secret-trait@example.com" },
+      credentials: { password: { config: { password: "hunter2-plaintext" } } },
+    });
+    const all = JSON.stringify(h.logs);
+    expect(all).not.toContain("secret-trait@example.com");
+    expect(all).not.toContain("hunter2-plaintext");
+  });
+});
+
 describe("defineTool invariants", () => {
   it("refuses to register a destructive tool without a confirmMessage", async () => {
     const { defineTool, DESTRUCTIVE } = await import("../../src/tools/define");

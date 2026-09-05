@@ -22,7 +22,7 @@ export function registerHealthTools(ctx: ToolContext): void {
     name: "kratos_health_alive",
     title: "Health: alive",
     description:
-      "Check if the Kratos server is alive and accepting requests. Returns alive status.",
+      "Check if the Kratos server is alive and accepting requests. Returns alive status. Example: {} (no arguments).",
     toolset: "health",
     inputSchema: EmptyInputSchema,
     outputSchema: HealthOutputSchema,
@@ -37,7 +37,7 @@ export function registerHealthTools(ctx: ToolContext): void {
     name: "kratos_health_ready",
     title: "Health: ready",
     description:
-      "Check if the Kratos server is ready to handle requests. Checks database connectivity and other dependencies.",
+      "Check if the Kratos server is ready to handle requests. Checks database connectivity and other dependencies. Example: {} (no arguments).",
     toolset: "health",
     inputSchema: EmptyInputSchema,
     outputSchema: HealthOutputSchema,
@@ -52,7 +52,7 @@ export function registerHealthTools(ctx: ToolContext): void {
     name: "kratos_version",
     title: "Kratos version",
     description:
-      "Get the version of the Kratos server. Useful for debugging and compatibility checks.",
+      "Get the version of the Kratos server. Useful for debugging and compatibility checks. Example: {} (no arguments).",
     toolset: "health",
     inputSchema: EmptyInputSchema,
     outputSchema: VersionOutputSchema,

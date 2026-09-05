@@ -22,7 +22,7 @@ export function registerCourierTools(ctx: ToolContext): void {
     name: "kratos_list_courier_messages",
     title: "List courier messages",
     description:
-      "List courier messages (emails/SMS) sent by Kratos. Filter by delivery status or recipient to investigate delivery issues. Returns nextPageToken for pagination.",
+      'List courier messages (emails/SMS) sent by Kratos. Filter by delivery status or recipient to investigate delivery issues. Returns nextPageToken for pagination. Example: {"status": "sent"}.',
     toolset: "courier",
     inputSchema: ListCourierMessagesInputSchema,
     outputSchema: ListCourierMessagesOutputSchema,
@@ -46,7 +46,7 @@ export function registerCourierTools(ctx: ToolContext): void {
     name: "kratos_get_courier_message",
     title: "Get courier message",
     description:
-      "Get detailed information about a specific courier message, including delivery attempts and status history.",
+      'Get detailed information about a specific courier message, including delivery attempts and status history. Example: {"id": "3a1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}.',
     toolset: "courier",
     inputSchema: GetCourierMessageInputSchema,
     outputSchema: PassthroughObjectSchema,

@@ -28,10 +28,12 @@ import {
   ListIdentitiesInputSchema,
   ListIdentitiesOutputSchema,
   ListIdentitySchemasInputSchema,
+  MutationResultSchema,
   PaginatedOutputSchema,
   PassthroughObjectSchema,
   PatchIdentityInputSchema,
   SetIdentityStateInputSchema,
+  SetIdentityStateOutputSchema,
   UpdateIdentityInputSchema,
 } from "../schemas/tools.js";
 import {
@@ -154,7 +156,7 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_get_identity_by_external_id",
     title: "Get identity by external ID",
     description:
-      "Look up an identity by its external_id field (exact match, requires Kratos 25.4.0+). The external_id links an identity to a record in an external system and is unique across all identities. Returns a structured NOT_FOUND error if no identity has the given external_id.",
+      'Look up an identity by its external_id field (exact match, requires Kratos 25.4.0+). The external_id links an identity to a record in an external system and is unique across all identities. Returns a structured NOT_FOUND error if no identity has the given external_id. Example: {"externalId": "crm-12345"}.',
     toolset: "identities",
     inputSchema: GetIdentityByExternalIdInputSchema,
     outputSchema: IdentitySummarySchema,
@@ -171,7 +173,7 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_create_identity",
     title: "Create identity",
     description:
-      "Create a new identity with the given schema and traits. Optionally set metadata, external_id, organization, pre-verified addresses, and import existing credentials (password hash, OIDC/SAML links). Traits must match the schema.",
+      'Create a new identity with the given schema and traits. Optionally set metadata, external_id, organization, pre-verified addresses, and import existing credentials (password hash, OIDC/SAML links). Traits must match the schema. Example: {"schemaId": "default", "traits": {"email": "jane.doe@example.com"}}.',
     toolset: "identities",
     inputSchema: CreateIdentityInputSchema,
     outputSchema: IdentitySummarySchema,
@@ -188,7 +190,7 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_update_identity",
     title: "Update identity (full replace)",
     description:
-      "Replace an identity's schema, traits, state, and metadata (PUT semantics). WARNING: fields you omit are cleared - omitting metadataPublic or metadataAdmin removes the existing metadata. Prefer kratos_patch_identity to change individual fields.",
+      'Replace an identity\'s schema, traits, state, and metadata (PUT semantics). WARNING: fields you omit are cleared - omitting metadataPublic or metadataAdmin removes the existing metadata. Prefer kratos_patch_identity to change individual fields. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "schemaId": "default", "traits": {"email": "jane.doe@example.com"}, "state": "active"}.',
     toolset: "identities",
     inputSchema: UpdateIdentityInputSchema,
     outputSchema: IdentitySummarySchema,
@@ -208,7 +210,7 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_patch_identity",
     title: "Patch identity",
     description:
-      "Partially update an identity with JSON Patch operations (add/remove/replace on paths like /traits/email, /state, /metadata_admin/role). Use this to change specific fields without replacing the whole identity.",
+      'Partially update an identity with JSON Patch operations (add/remove/replace on paths like /traits/email, /state, /metadata_admin/role). Use this to change specific fields without replacing the whole identity. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "patch": [{"op": "replace", "path": "/traits/email", "value": "jane.doe@example.com"}]}.',
     toolset: "identities",
     inputSchema: PatchIdentityInputSchema,
     outputSchema: IdentitySummarySchema,
@@ -228,10 +230,10 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_set_identity_state",
     title: "Set identity state",
     description:
-      "Activate or suspend (inactive) an identity. An inactive identity cannot log in. Set revokeSessions to also delete all of its sessions, logging it out everywhere immediately (session deletion is irreversible).",
+      'Activate or suspend (inactive) an identity. An inactive identity cannot log in. Set revokeSessions to also delete all of its sessions, logging it out everywhere immediately (session deletion is irreversible). Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "state": "inactive"}.',
     toolset: "identities",
     inputSchema: SetIdentityStateInputSchema,
-    outputSchema: PassthroughObjectSchema,
+    outputSchema: SetIdentityStateOutputSchema,
     annotations: UPDATE_IDEMPOTENT,
     confirmMessage: (args) =>
       `Set identity ${args.id} to ${args.state}${args.revokeSessions ? " and revoke all its sessions" : ""}?`,
@@ -243,7 +245,11 @@ export function registerIdentityTools(ctx: ToolContext): void {
       const sessionsRevoked = args.revokeSessions
         ? await revokeAllSessions(clients.identity, args.id)
         : false;
-      return { ...response.data, sessionsRevoked } as Passthrough;
+      return {
+        ...(response.data as unknown as Passthrough),
+        id: response.data.id,
+        sessionsRevoked,
+      };
     },
   });
 
@@ -251,15 +257,18 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_delete_identity",
     title: "Delete identity",
     description:
-      "Permanently delete an identity together with its credentials, sessions, and addresses. This cannot be undone; consider kratos_set_identity_state with state=inactive to suspend instead.",
+      'Permanently delete an identity together with its credentials, sessions, and addresses. This cannot be undone; consider kratos_set_identity_state with state=inactive to suspend instead. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615"}.',
     toolset: "identities",
     inputSchema: DeleteIdentityInputSchema,
-    outputSchema: PassthroughObjectSchema,
+    outputSchema: MutationResultSchema,
     annotations: DESTRUCTIVE,
     confirmMessage: (args) => `Permanently delete identity ${args.id}? This cannot be undone.`,
     run: async (args) => {
       await clients.identity.deleteIdentity({ id: args.id });
-      return { success: true, message: `Identity ${args.id} has been permanently deleted` };
+      return {
+        success: true as const,
+        message: `Identity ${args.id} has been permanently deleted`,
+      };
     },
   });
 
@@ -270,7 +279,7 @@ export function registerIdentityTools(ctx: ToolContext): void {
       "Remove one credential type from an identity (e.g. reset TOTP, WebAuthn, passkey, or lookup secrets while keeping the password). For oidc/saml pass identifier='<provider>:<subject>' to unlink a single provider. The credential is gone permanently; the user must re-enrol.",
     toolset: "identities",
     inputSchema: DeleteIdentityCredentialInputSchema,
-    outputSchema: PassthroughObjectSchema,
+    outputSchema: MutationResultSchema,
     annotations: DESTRUCTIVE,
     confirmMessage: (args) =>
       `Delete ${credentialTarget(args)} credential from identity ${args.id}?`,
@@ -281,7 +290,10 @@ export function registerIdentityTools(ctx: ToolContext): void {
         type: args.type,
         identifier: args.identifier,
       });
-      return { success: true, message: `${target} credential removed from identity ${args.id}` };
+      return {
+        success: true as const,
+        message: `${target} credential removed from identity ${args.id}`,
+      };
     },
   });
 
@@ -289,7 +301,7 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_batch_patch_identities",
     title: "Batch create identities",
     description:
-      "Create up to 100 identities in one request (bulk import). Items succeed or fail independently: each result reports action 'create' (with the new identity ID) or 'error' (with Kratos error detail), plus a succeeded/failed summary. Supply a patchId per item to correlate results.",
+      'Create up to 100 identities in one request (bulk import). Items succeed or fail independently: each result reports action \'create\' (with the new identity ID) or \'error\' (with Kratos error detail), plus a succeeded/failed summary. Supply a patchId per item to correlate results. Example: {"identities": [{"create": {"schemaId": "default", "traits": {"email": "jane.doe@example.com"}}}]}.',
     toolset: "identities",
     inputSchema: BatchPatchIdentitiesInputSchema,
     outputSchema: BatchPatchIdentitiesOutputSchema,
@@ -322,7 +334,7 @@ export function registerIdentityTools(ctx: ToolContext): void {
     name: "kratos_list_identity_schemas",
     title: "List identity schemas",
     description:
-      "List the identity schemas configured in Kratos (ID plus JSON Schema). Use this to discover valid schemaId values and required traits before creating identities.",
+      "List the identity schemas configured in Kratos (ID plus JSON Schema). Use this to discover valid schemaId values and required traits before creating identities. Example: {}.",
     toolset: "identities",
     inputSchema: ListIdentitySchemasInputSchema,
     outputSchema: ListIdentitySchemasOutputSchema,
