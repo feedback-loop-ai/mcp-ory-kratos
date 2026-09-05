@@ -672,7 +672,7 @@
 
 **Description**
 
-> Remove one credential type from an identity (e.g. reset TOTP, WebAuthn, passkey, or lookup secrets while keeping the password). For oidc/saml pass identifier='<provider>:<subject>' to unlink a single provider. The credential is gone permanently; the user must re-enrol.
+> Remove one credential type from an identity (e.g. reset TOTP, WebAuthn, passkey, or lookup secrets while keeping the password). For oidc/saml pass identifier='<provider>:<subject>' to unlink a single provider. The credential is gone permanently; the user must re-enrol. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "type": "totp"}.
 
 **Input schema (JSON Schema)**
 
@@ -746,7 +746,7 @@
 
 **Description**
 
-> Get a single identity by ID. Use includeCredential (e.g. ['oidc', 'password']) to see which credentials are linked; secret config is redacted unless KRATOS_ALLOW_CREDENTIAL_EXPOSURE is set.
+> Get a single identity by ID. Use includeCredential (e.g. ['oidc', 'password']) to see which credentials are linked; secret config is redacted unless KRATOS_ALLOW_CREDENTIAL_EXPOSURE is set. Example: {"id": "9f8d7c6b-5a49-4838-9271-605948372615", "includeCredential": ["oidc"]}.
 
 **Input schema (JSON Schema)**
 
@@ -902,7 +902,7 @@
 
 **Description**
 
-> Get the raw JSON Schema for an identity schema ID (e.g. 'default'). Use it to learn which traits are required and which are used as login identifiers.
+> Get the raw JSON Schema for an identity schema ID (e.g. 'default'). Use it to learn which traits are required and which are used as login identifiers. Example: {"id": "default"}.
 
 **Input schema (JSON Schema)**
 
@@ -942,7 +942,7 @@
 
 **Description**
 
-> List identities with optional filtering by exact or similar credential identifier (e.g. email), ID list, or organization. Returns nextPageToken for pagination. Use includeCredential to also load linked credentials (secret config is redacted by default).
+> List identities with optional filtering by exact or similar credential identifier (e.g. email), ID list, or organization. Returns nextPageToken for pagination. Use includeCredential to also load linked credentials (secret config is redacted by default). Example: {"previewCredentialsIdentifierSimilar": "jane@", "pageSize": 20}.
 
 **Input schema (JSON Schema)**
 

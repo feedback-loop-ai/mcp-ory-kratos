@@ -3,6 +3,7 @@
  * structured output, error envelope, and elicitation-based confirmation.
  */
 
+import Ajv from "ajv";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Harness, httpError, startHarness } from "./harness";
 
@@ -52,6 +53,12 @@ describe("server", () => {
       expect(tool.annotations?.openWorldHint, tool.name).toBe(false);
       expect(typeof tool.annotations?.readOnlyHint, tool.name).toBe("boolean");
       expect(tool.outputSchema, tool.name).toBeDefined();
+      // FR-006a: every description ends with a usage example that is valid input
+      const example = tool.description?.match(/Example: (\{.*\})( \(no arguments\))?\.$/);
+      expect(example, `${tool.name} description must end with an Example`).toBeTruthy();
+      const parsed = JSON.parse(example?.[1] ?? "{}");
+      const validate = new Ajv({ strict: false }).compile(tool.inputSchema);
+      expect(validate(parsed), `${tool.name} example must satisfy its inputSchema`).toBe(true);
     }
   });
 

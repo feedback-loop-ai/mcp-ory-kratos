@@ -112,7 +112,7 @@ bun run typecheck       # src + tests (tsconfig.test.json)
 bun run test:unit       # 16 files / 224 tests; baseline 89.75% stmts / 78.91% branches / 89.36% funcs / 90.82% lines; thresholds 80/70/80/80 enforced; < 1 s
 bun run audit           # fails on high/critical
 
-docker compose up -d --wait && bun run test:api   # Kratos v26.2.0, 69 tests incl. MCP stdio e2e
+docker compose up -d --wait && bun run test:api   # Kratos v26.2.0, 68 tests incl. MCP stdio e2e
 docker compose down
 ```
 
