@@ -1,6 +1,6 @@
 {
   "name": "mcp-ory-kratos",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "MCP server for Ory Kratos Admin API",
   "bin": {

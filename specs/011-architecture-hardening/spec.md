@@ -112,7 +112,9 @@ As a maintainer, I want a single, small registration contract for tools so that 
 
 ### Edge Cases
 
-- What happens when the client's confirmation prompt errors or times out? The tool call fails with a structured error; no upstream call is made.
+- What happens when the client's confirmation prompt errors or times out? The elicitation failure propagates through the shared error mapper: the tool call returns an error result (error flag set, structured error envelope, `Tool failed` log entry) and no upstream call is made. This is distinct from a decline, which returns the Cancelled Result.
+- What happens when two operators update the same identity concurrently? Last write wins (FR-020a); the server does not detect the conflict. An agent that must not clobber uses `kratos_patch_identity` with a `test` operation.
+- Why is `kratos_extend_session` destructive when it only lengthens a session? The MCP `destructiveHint` means "may perform destructive updates" (any modification of existing state, per the annotation vocabulary), not "removes data"; extending a session mutates an existing record and widens an access window, so it prompts like any other update.
 - What happens when a filtered session scan hits the page cap with fewer matches than requested? The partial matches are returned with `truncated: true` and a resume cursor; the description tells the agent to raise the cap or resume.
 - What happens when a page cursor from another Kratos instance or an older run is supplied? Kratos rejects it; the upstream error is mapped to the standard structured error.
 - What happens when both the deprecated boolean `includeCredentials` flag and the `includeCredential` list are supplied? The explicit list wins.
@@ -135,7 +137,8 @@ As a maintainer, I want a single, small registration contract for tools so that 
 - **FR-002**: `kratos_list_sessions` with a filter MUST scan successive upstream pages (each at the maximum upstream page size, independent of the requested `pageSize`) until `pageSize` matches are collected, the collection ends, or the page cap is reached; it MUST report pages scanned, `truncated` (true only when the cap stopped the scan), and a resume cursor whenever more upstream pages remain.
 - **FR-003**: Analytics tools MUST accept an optional page cap, default to a configurable server-wide cap, and report pages scanned, truncation, and a resume cursor.
 - **FR-004**: `kratos_session_analytics` MUST NOT request device expansion when device breakdowns are not requested.
-- **FR-005**: `kratos_list_sessions` MUST use the same page-size/page-cursor parameter names as the other list tools (replacing its former `limit` parameter). This is a breaking change to that tool's input contract and MUST be documented.
+- **FR-004a**: Multi-page scans MUST fetch upstream pages strictly sequentially (at most one in-flight Kratos request per tool call) and MUST NOT add client-side throttling, sleeps, or parallel fan-out; the page cap (FR-002/FR-003) is the sole upstream-load bound.
+- **FR-005**: `kratos_list_sessions` MUST use the same page-size/page-cursor parameter names as the other list tools (replacing its former `limit` parameter). This is a breaking change to that tool's input contract and MUST be documented; it ships in release `0.3.0` (see FR-025).
 
 **Safety & exposure controls**
 
@@ -157,6 +160,7 @@ As a maintainer, I want a single, small registration contract for tools so that 
 - **FR-018**: The server MUST provide `kratos_list_identity_schemas` and `kratos_get_identity_schema` tools mirroring the existing schema resources.
 - **FR-019**: `kratos_create_recovery_link` MUST accept a return-to URL; `kratos_create_recovery_code` MUST accept a flow type.
 - **FR-020**: `kratos_update_identity` description MUST state that omitted metadata is cleared (full replacement semantics).
+- **FR-020a**: Identity write tools (`kratos_update_identity`, `kratos_patch_identity`, `kratos_set_identity_state`, batch patch) MUST use last-write-wins semantics: no optimistic-concurrency input, no read-before-write comparison, and no server-side conflict detection. JSON Patch `test` operations in `kratos_patch_identity` are the only conflict guard offered and are forwarded to Kratos unchanged.
 
 **Structured output & protocol surface**
 
@@ -164,7 +168,8 @@ As a maintainer, I want a single, small registration contract for tools so that 
 - **FR-022**: The server MUST declare capabilities (tools with list-changed, resources, logging) and provide operator-facing instructions describing ID conventions, pagination, destructive tools, and redaction.
 - **FR-023**: The schema-by-ID resource MUST be registered as a URI template with listing and argument completion; resource read failures MUST surface as protocol errors, not as successful reads with an error body.
 - **FR-024**: Warning and error log entries MUST be forwarded to the connected client via the MCP logging capability, and the client MUST be able to adjust the server's log level.
-- **FR-025**: The server version reported over MCP MUST be the package version.
+- **FR-024a**: The shared registration contract MUST emit, for every tool invocation, one start log entry and exactly one completion entry (`Tool completed` or `Tool failed`); all entries for an invocation MUST carry the tool name and a per-invocation `correlationId`, completion entries MUST carry `durationMs`, and failure entries MUST carry the mapped error code and message. Tool files MUST NOT emit these entries themselves (Constitution IV request tracing).
+- **FR-025**: The server version reported over MCP MUST be the package version. This feature releases as `0.3.0`; the package version, MCP-reported version, and git tag MUST match.
 
 **Robustness**
 
@@ -190,6 +195,7 @@ As a maintainer, I want a single, small registration contract for tools so that 
 - **Cancelled Result**: `{ cancelled: true, message }` returned when confirmation is declined.
 - **Redaction Marker**: the fixed string `[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]` replacing secret-bearing credential `config` when exposure is disabled; it names the switch so an agent can tell the operator how to proceed. Absent `config` stays absent.
 - **Runtime Flags**: toolsets, read-only, confirm-destructive, allow-credential-exposure, max-scan-pages.
+- **Invocation Trace**: the log entries for one tool call — start (`tool`, `correlationId`) and completion (`tool`, `correlationId`, `durationMs`, plus `error.code`/`error.message` on failure). Exactly one completion entry per invocation.
 
 ## Success Criteria *(mandatory)*
 
@@ -232,6 +238,10 @@ As a maintainer, I want a single, small registration contract for tools so that 
 - Q: In a filtered session scan, what is a "page" and when is the resume cursor returned? → A: Each scanned page is fetched at the maximum upstream page size (100), independent of the requested `pageSize`, which counts matches to return. `nextPageToken` is returned whenever more upstream pages remain (also when `pageSize` matches were collected before the collection ended); `truncated` is true only when the page cap stopped the scan.
 - Q: What replaces redacted credential configuration? → A: A fixed, self-describing string that names the configuration switch to enable exposure (`[redacted: set KRATOS_ALLOW_CREDENTIAL_EXPOSURE=1]`), so an agent can tell the operator how to proceed. Not null, not an empty object.
 - Q: What is the canonical name of the credential-type list parameter? → A: `includeCredential` (singular, mirroring the Kratos `include_credential` query parameter) on both `kratos_get_identity` and `kratos_list_identities`; the deprecated boolean `includeCredentials` remains only on `kratos_get_identity`.
+- Q: Should multi-page scans throttle or rate-limit their requests to Kratos? → A: No. Pages are fetched strictly sequentially (one in-flight request per tool call) and the page cap is the only load bound; no sleeps, no parallel fan-out, no client-side rate limiter. Kratos Admin API has no published rate limit and the cap already bounds a call to `maxPages` requests; a limiter would be speculative complexity (Constitution V).
+- Q: How are concurrent edits to the same identity handled by update/patch/set-state? → A: Last write wins. Kratos exposes no ETag / `If-Match` on identity writes, so the server offers no optimistic-concurrency parameter and performs no read-before-write comparison; the description of `kratos_update_identity` already warns that it replaces the whole record. Callers needing a targeted change use `kratos_patch_identity` (JSON Patch), whose `test` operations are the only conflict guard available.
+- Q: Must every tool invocation be traceable in logs (Constitution IV request tracing)? → A: Yes. The shared registration contract emits a start entry and exactly one completion entry (`Tool completed` or `Tool failed`) per invocation, each carrying the tool name, a per-invocation `correlationId`, and — on completion — `durationMs`; failures also carry the mapped error code. Tool files never log these themselves.
+- Q: What version is released with the breaking `kratos_list_sessions` rename? → A: `0.3.0` (minor bump from `0.2.0`; breaking changes are minor bumps while pre-1.0). The package version, the MCP-reported server version, and the release tag MUST all be `0.3.0`.
 
 ## Out of Scope
 
