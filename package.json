@@ -49,10 +49,10 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.12",
     "@types/bun": "^1.4.1",
-    "@vitest/coverage-v8": "^4",
+    "@vitest/coverage-v8": "^5",
     "ajv": "^8.18.0",
-    "typescript": "^5.9",
-    "vitest": "^4"
+    "typescript": "^7.0",
+    "vitest": "^5"
   },
   "overrides": {
     "axios": "^1.20.0",
